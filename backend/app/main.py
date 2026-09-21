@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
-from app.routers import auth, health, me, test_support
+from app.routers import auth, health, me, meta, test_support
 
 API_PREFIX = "/api/v1"
 logger = logging.getLogger("homebasics.request")
@@ -55,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)
     app.include_router(me.router, prefix=API_PREFIX)
+    app.include_router(meta.router, prefix=API_PREFIX)
     if settings.test_endpoints_active:
         app.include_router(test_support.router, prefix=API_PREFIX)
 

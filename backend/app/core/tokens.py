@@ -43,12 +43,18 @@ def _unauthorized(code: str, message: str) -> AppError:
 
 def decode_access_token(token: str) -> AccessClaims:
     try:
-        # pyjwt checks exp against the real clock; we check it against clock.now() below.
+        # pyjwt compares exp/iat/nbf with the *real* clock; we judge time against clock.now()
+        # below. (Leaving verify_iat on rejected tokens minted while the test clock was ahead.)
         payload = jwt.decode(
             token,
             get_settings().jwt_secret,
             algorithms=[ALGORITHM],
-            options={"verify_exp": False, "require": ["sub", "exp", "type"]},
+            options={
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_nbf": False,
+                "require": ["sub", "exp", "type"],
+            },
         )
     except jwt.InvalidTokenError as exc:
         raise _unauthorized("invalid_token", "Invalid access token.") from exc

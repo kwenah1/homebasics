@@ -4,13 +4,18 @@ import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 
 import { AppRoutes } from '../App'
+import { setAccessToken } from '../api/client'
+import { AuthProvider } from '../auth/AuthContext'
 
-/** Render with a fresh QueryClient (no retries, no shared cache between tests). */
+/** Render with a fresh QueryClient and auth state (no retries, no shared cache). */
 export function renderWithProviders(ui: ReactElement, { route = '/' } = {}) {
+  setAccessToken(null)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+      <AuthProvider>
+        <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+      </AuthProvider>
     </QueryClientProvider>,
   )
 }

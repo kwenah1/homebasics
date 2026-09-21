@@ -50,6 +50,12 @@ class TestAccessTokens:
             decode_access_token(token)
         assert exc.value.code == "token_expired"
 
+    def test_token_minted_while_clock_is_ahead_is_valid(self):
+        """Regression (found by E2E): pyjwt rejected iat 'in the future' vs the real clock."""
+        clock.advance(timedelta(minutes=16))
+        token, _ = create_access_token(7, "customer")
+        assert decode_access_token(token).user_id == 7
+
     @pytest.mark.parametrize(
         "token",
         [
