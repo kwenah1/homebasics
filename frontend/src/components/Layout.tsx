@@ -1,7 +1,8 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
+import { useCategories } from '../api/catalog'
 import { useAuth } from '../auth/AuthContext'
-import { CATEGORIES } from '../data/categories'
 import { ApiStatus } from './ApiStatus'
 
 function AccountLinks() {
@@ -36,7 +37,44 @@ function AccountLinks() {
   )
 }
 
+function HeaderSearch({ initial }: { initial: string }) {
+  const navigate = useNavigate()
+  const [q, setQ] = useState(initial)
+
+  return (
+    <form
+      role="search"
+      className="hidden max-w-md flex-1 sm:block"
+      onSubmit={(e) => {
+        e.preventDefault()
+        const term = q.trim()
+        navigate(term ? `/products?q=${encodeURIComponent(term)}` : '/products')
+      }}
+    >
+      <label htmlFor="header-search" className="sr-only">
+        Search products
+      </label>
+      <input
+        id="header-search"
+        type="search"
+        placeholder="Search towels, sponges, bins…"
+        value={q}
+        maxLength={100}
+        onChange={(e) => setQ(e.target.value)}
+        data-testid="header-search"
+        className="w-full rounded-full border border-stone-300 bg-stone-50 px-4 py-2 text-sm focus:border-brand-500 focus:bg-white"
+      />
+    </form>
+  )
+}
+
 export function Layout() {
+  const { data: categories = [] } = useCategories()
+  const { pathname } = useLocation()
+  const [params] = useSearchParams()
+  // On the results page the box mirrors the current search; the key remounts it when the
+  // URL changes (Back button, filter edits) so it never shows a stale term.
+  const headerQuery = pathname === '/products' ? (params.get('q') ?? '') : ''
   return (
     <div className="flex min-h-screen flex-col">
       <a
@@ -51,6 +89,7 @@ export function Layout() {
             <img src="/favicon.svg" alt="" className="size-8" />
             <span className="text-xl font-bold tracking-tight text-brand-900">HomeBasics</span>
           </Link>
+          <HeaderSearch key={pathname + headerQuery} initial={headerQuery} />
           <nav aria-label="Account" className="flex items-center gap-5 text-sm font-medium">
             <AccountLinks />
             <Link
@@ -65,7 +104,7 @@ export function Layout() {
         </div>
         <nav aria-label="Categories" className="border-t border-stone-100">
           <ul className="mx-auto flex max-w-6xl gap-6 overflow-x-auto px-4 py-2 text-sm">
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <li key={c.slug}>
                 <NavLink
                   to={`/c/${c.slug}`}

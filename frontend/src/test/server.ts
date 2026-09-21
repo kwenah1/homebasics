@@ -3,6 +3,7 @@ import { setupServer } from 'msw/node'
 
 import type { TokenResponse, User } from '../api/auth'
 import type { Health } from '../api/health'
+import { categories, page } from './catalogFixtures'
 
 export const healthyResponse: Health = {
   status: 'ok',
@@ -27,9 +28,11 @@ export function tokenFor(user: User = casey, token = 'access-1'): TokenResponse 
 export const apiError = (status: number, code: string, message = code, extra = {}) =>
   HttpResponse.json({ error: { code, message, ...extra } }, { status })
 
-// Default: API healthy, visitor anonymous. Override per test with server.use(...).
+// Default: API healthy, visitor anonymous, catalog empty. Override per test with server.use(...).
 export const handlers = [
   http.get('/api/v1/health', () => HttpResponse.json(healthyResponse)),
+  http.get('/api/v1/categories', () => HttpResponse.json(categories)),
+  http.get('/api/v1/products', () => HttpResponse.json(page([]))),
   http.post('/api/v1/auth/refresh', () => apiError(401, 'invalid_refresh_token')),
   http.post('/api/v1/auth/logout', () => new HttpResponse(null, { status: 204 })),
 ]
