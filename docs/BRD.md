@@ -38,6 +38,25 @@ built as a realistic system-under-test for SDET practice across every testing la
 - **ACC-05** Profile edit; up to 5 saved addresses, one default.
 - **ACC-06** Password reset via emailed token, valid 30 minutes.
 
+#### Account rules clarified during Milestone 2
+- **ACC-02a** Passwords are at most 64 characters (and at most 72 UTF-8 bytes, bcrypt's limit).
+  "Letter" means an ASCII letter A-Z/a-z.
+- **ACC-03a** The access token is kept in memory only. The refresh token is an opaque value in an
+  `httpOnly`, `SameSite=Strict` cookie scoped to `/api/v1/auth`, and it rotates on every use.
+  Replaying an already-rotated refresh token revokes that whole login "family" (theft
+  detection).
+- **ACC-04a** Failures 1-4 return 401 `invalid_credentials`. The **5th** failure returns 423
+  `account_locked` with `Retry-After`. While locked, even the correct password gets 423. When the lock
+  expires the counter restarts at 0, and a successful login also resets it.
+- **ACC-04b** No account enumeration: unknown email and wrong password give an identical 401
+  (and take the same bcrypt time); forgot-password always answers 202.
+- **ACC-05a** Only names are editable on the profile; unknown fields such as `email` or `role` are rejected
+  with 422 (no mass assignment). The first address is automatically the default. Deleting the
+  default promotes the oldest remaining address. Another user's address returns 404.
+- **ACC-05b** Changing the password signs out every session and issues this device a fresh one.
+- **ACC-06a** Using a reset link also invalidates the user's other outstanding links, signs out
+  every session, and clears any lockout.
+
 ### Catalog (CAT)
 - **CAT-01** Paginated product list (20/page), filter by category.
 - **CAT-02** Keyword search over name + description.
@@ -146,7 +165,7 @@ Traceability: see [traceability.md](traceability.md).
 ## 9. Milestones
 
 1. Foundation - repo, CI, DB + migrations, seed data, test harness **(done)**
-2. Accounts & auth
+2. Accounts & auth **(done)** - rate limiting on auth endpoints deferred to M7 (NFR-SEC)
 3. Catalog & search
 4. Cart & guest-merge
 5. Checkout, pricing, mock payments, order state machine

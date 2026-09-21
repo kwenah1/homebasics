@@ -44,7 +44,16 @@ class User(TimestampMixin, Base):
 
 class Address(TimestampMixin, Base):
     __tablename__ = "addresses"
-    __table_args__ = (CheckConstraint("char_length(state) = 2", name="state_code_len"),)
+    __table_args__ = (
+        CheckConstraint("char_length(state) = 2", name="state_code_len"),
+        # ACC-05: at most one default address per user, guaranteed by the database.
+        Index(
+            "uq_addresses_one_default_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(

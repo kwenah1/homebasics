@@ -24,8 +24,17 @@ class Settings(BaseSettings):
     test_database_url: str | None = None
 
     jwt_secret: str = "dev-only-insecure-secret-change-me"  # noqa: S105
-    access_token_minutes: int = 15
-    refresh_token_days: int = 7
+    bcrypt_rounds: int = 12  # tests use 4 for speed; never lower this in prod
+    access_token_minutes: int = 15  # ACC-03
+    refresh_token_days: int = 7  # ACC-03
+    refresh_cookie_name: str = "hb_refresh"
+    lockout_threshold: int = 5  # ACC-04
+    lockout_minutes: int = 15  # ACC-04
+    reset_token_minutes: int = 30  # ACC-06
+    max_addresses: int = 5  # ACC-05
+
+    # Used to build links in emails (password reset).
+    web_base_url: str = "http://localhost:5173"
 
     # NoDecode: accept a plain comma-separated env value instead of requiring JSON.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
@@ -54,6 +63,8 @@ class Settings(BaseSettings):
                 raise ValueError("ENABLE_TEST_ENDPOINTS must be false in prod")
             if self.jwt_secret.startswith("dev-only") or len(self.jwt_secret) < 32:
                 raise ValueError("JWT_SECRET must be set to 32+ random characters in prod")
+            if self.bcrypt_rounds < 12:
+                raise ValueError("BCRYPT_ROUNDS must be at least 12 in prod")
         return self
 
     @property

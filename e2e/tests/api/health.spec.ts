@@ -16,16 +16,6 @@ test.describe('API: health & test support @api', () => {
     expect(response.headers()['x-request-id']).toBe('pw-trace-001')
   })
 
-  test('POST /test/reset reseeds deterministic data', async ({ request }) => {
-    const response = await request.post('/api/v1/test/reset')
-
-    expect(response.status()).toBe(200)
-    expect(await response.json()).toEqual({
-      reset: true,
-      seeded: { tax_rates: 51, users: 3, categories: 6, products: 61 },
-    })
-  })
-
   test('OpenAPI spec is published', async ({ request }) => {
     const spec = await (await request.get('/api/v1/openapi.json')).json()
     expect(spec.openapi).toMatch(/^3\./)

@@ -21,12 +21,22 @@ if TEST_DATABASE_URL:
     os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["ENVIRONMENT"] = "test"
 os.environ["ENABLE_TEST_ENDPOINTS"] = "true"
+os.environ["BCRYPT_ROUNDS"] = "4"  # ~60x faster hashing; policy logic is unchanged
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import Connection, create_engine, text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.config import Settings, get_settings  # noqa: E402
+from app.core import clock  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_clock():
+    """Time travel in one test must never leak into the next."""
+    clock.reset()
+    yield
+    clock.reset()
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -103,3 +113,37 @@ def client(db: Session, test_settings: Settings) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def make_user(db):
+    """Factory: make_user(email=..., password=..., role=...) -> (User, password)."""
+    from tests.factories import DEFAULT_PASSWORD, UserFactory
+
+    def _make(password: str = DEFAULT_PASSWORD, **fields):
+        UserFactory._meta.sqlalchemy_session = db
+        return UserFactory(password=password, **fields), password
+
+    return _make
+
+
+@pytest.fixture
+def auth_as(client):
+    """auth_as(email, password) logs the TestClient in and sets the Bearer header."""
+
+    def _login(email: str, password: str) -> dict:
+        response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+        assert response.status_code == 200, response.text
+        body = response.json()
+        client.headers["Authorization"] = f"Bearer {body['access_token']}"
+        return body
+
+    return _login
+
+
+@pytest.fixture
+def customer(make_user, auth_as):
+    """A fresh, signed-in customer (not a seed user, so tests can mutate it freely)."""
+    user, password = make_user()
+    auth_as(user.email, password)
+    return user

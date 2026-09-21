@@ -54,13 +54,33 @@ cd ../e2e && npm install && npx playwright install chromium
 | Frontend lint/types | `frontend> npm run lint ; npm run typecheck` |
 | E2E everything | `e2e> npm test` (starts API + web automatically if not running) |
 | E2E smoke / API only | `e2e> npm run test:smoke` / `npm run test:api` |
+| E2E global-state tests only | `e2e> npx playwright test --project=isolated --no-deps` |
 | E2E interactive | `e2e> npm run test:ui` |
+
+### E2E projects
+
+| Project | What | Runs |
+|---|---|---|
+| `api` | HTTP contract tests straight against FastAPI | parallel |
+| `chromium` | UI journeys, a11y | parallel |
+| `mobile` | `@mobile`-tagged journeys on a Pixel 7 viewport | parallel |
+| `isolated` | Tests that change **global** state: server clock, full DB reset | after all others, 1 worker |
+
+UI tests never share accounts: the `user` / `signedInUser` fixtures register a fresh customer
+per test, so parallel workers can't collide.
+
+### Test-support endpoints (`ENABLE_TEST_ENDPOINTS=true`, impossible in prod)
+
+| Endpoint | Use |
+|---|---|
+| `POST /api/v1/test/reset` | Wipe and reload seed data, reset the clock |
+| `GET /api/v1/test/emails?to=…` | Read the email outbox (e.g. password-reset links) |
+| `GET/POST /api/v1/test/clock` | `{"advance_seconds": 901}`, `{"freeze": true}`, `{"reset": true}` |
 
 ### Test data
 
-`POST /api/v1/test/reset` (enabled by `ENABLE_TEST_ENDPOINTS=true`, impossible in prod) wipes
-and reloads deterministic seed data: 51 tax rates, 6 categories, 60 active + 1 archived product,
-and these users:
+The reset loads deterministic seed data: 51 tax rates, 6 categories, 60 active + 1 archived
+product, and these users:
 
 | Email | Password | Role |
 |---|---|---|

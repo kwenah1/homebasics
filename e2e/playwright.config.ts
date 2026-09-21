@@ -30,12 +30,23 @@ export default defineConfig({
   projects: [
     // API-only tests: no browser needed, hit FastAPI directly.
     { name: 'api', testMatch: /api\/.*\.spec\.ts/, use: { baseURL: API_URL } },
-    { name: 'chromium', testIgnore: /api\//, use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', testIgnore: /(api|isolated)\//, use: { ...devices['Desktop Chrome'] } },
     {
       name: 'mobile',
-      testIgnore: /api\//,
+      testIgnore: /(api|isolated)\//,
       grep: /@mobile/,
       use: { ...devices['Pixel 7'] },
+    },
+    {
+      // Tests that change global state (server clock, full DB reset) must run alone: this
+      // project waits for every other one and runs its files one at a time in one worker.
+      // Run just these with: npx playwright test --project=isolated
+      name: 'isolated',
+      testMatch: /isolated\/.*\.spec\.ts/,
+      fullyParallel: false,
+      workers: 1,
+      dependencies: ['api', 'chromium', 'mobile'],
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
   // Starts both servers unless they're already running (e.g. from the IDE).

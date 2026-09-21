@@ -1,7 +1,40 @@
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 
+import { useAuth } from '../auth/AuthContext'
 import { CATEGORIES } from '../data/categories'
 import { ApiStatus } from './ApiStatus'
+
+function AccountLinks() {
+  const { status, user, logout } = useAuth()
+  const navigate = useNavigate()
+
+  if (status === 'loading') return <span className="w-16" aria-hidden="true" />
+  if (status === 'anonymous' || !user) {
+    return (
+      <Link to="/login" data-testid="nav-login" className="hover:text-brand-700">
+        Sign in
+      </Link>
+    )
+  }
+  return (
+    <>
+      <Link to="/account" data-testid="nav-account" className="hover:text-brand-700">
+        Hi, <span data-testid="nav-user-name">{user.first_name}</span>
+      </Link>
+      <button
+        type="button"
+        data-testid="nav-logout"
+        className="hover:text-brand-700"
+        onClick={async () => {
+          await logout()
+          navigate('/')
+        }}
+      >
+        Sign out
+      </button>
+    </>
+  )
+}
 
 export function Layout() {
   return (
@@ -19,9 +52,7 @@ export function Layout() {
             <span className="text-xl font-bold tracking-tight text-brand-900">HomeBasics</span>
           </Link>
           <nav aria-label="Account" className="flex items-center gap-5 text-sm font-medium">
-            <Link to="/login" data-testid="nav-login" className="hover:text-brand-700">
-              Sign in
-            </Link>
+            <AccountLinks />
             <Link
               to="/cart"
               data-testid="nav-cart"
