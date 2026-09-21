@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.14'
+  NODE_VERSION: '22'
+  DB_URL: postgresql+psycopg://homebasics:homebasics@localhost:5432/homebasics
+
+jobs:
+  backend:
+    name: Backend - lint, unit & integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: homebasics, POSTGRES_PASSWORD: homebasics, POSTGRES_DB: homebasics }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
+    defaults: { run: { working-directory: backend } }
+    env:
+      TEST_DATABASE_URL: ${{ env.DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '${{ env.PYTHON_VERSION }}', cache: pip, cache-dependency-path: backend/requirements*.txt }
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest --cov --cov-report=xml --cov-report=term --junitxml=results/junit.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-results
+          path: |
+            backend/results/
+            backend/coverage.xml
+
+  frontend:
+    name: Frontend - lint, typecheck, unit, build
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run build
+
+  e2e:
+    name: E2E - Playwright (API, UI, a11y)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: homebasics, POSTGRES_PASSWORD: homebasics, POSTGRES_DB: homebasics }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: ${{ env.DB_URL }}
+      ENVIRONMENT: test
+      ENABLE_TEST_ENDPOINTS: 'true'
+      JWT_SECRET: ci-only-secret-not-used-in-production-000000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '${{ env.PYTHON_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: Backend venv + migrate + seed
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/alembic upgrade head
+          .venv/bin/python -m app.seed.run
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - run: npx playwright test
+        working-directory: e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: playwright-report, path: e2e/playwright-report, retention-days: 14 }
