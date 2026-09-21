@@ -1,5 +1,6 @@
 """Import every model here so Base.metadata is complete for Alembic and tests."""
 
+from app.models.auth import OutboxEmail, PasswordResetToken, RefreshToken
 from app.models.base import Base
 from app.models.cart import Cart, CartItem
 from app.models.catalog import Category, Product, ProductImage
@@ -26,10 +27,13 @@ __all__ = [
     "OrderItem",
     "OrderStatus",
     "OrderStatusHistory",
+    "OutboxEmail",
+    "PasswordResetToken",
     "Payment",
     "PaymentStatus",
     "Product",
     "ProductImage",
+    "RefreshToken",
     "ShippingMethod",
     "TaxRate",
     "User",

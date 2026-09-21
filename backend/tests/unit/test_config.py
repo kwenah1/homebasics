@@ -10,6 +10,7 @@ def make(**overrides) -> Settings:
     # _env_file=None ignores the developer's .env; conftest sets ENABLE_TEST_ENDPOINTS in the
     # process env, so default it off here to keep each case isolated.
     overrides.setdefault("enable_test_endpoints", False)
+    overrides.setdefault("bcrypt_rounds", 12)  # conftest sets BCRYPT_ROUNDS=4 for speed
     return Settings(_env_file=None, **overrides)
 
 
@@ -47,6 +48,10 @@ class TestProdGuards:
     def test_weak_jwt_secret_rejected_in_prod(self, secret):
         with pytest.raises(ValidationError, match="JWT_SECRET"):
             make(environment="prod", jwt_secret=secret)
+
+    def test_low_bcrypt_cost_rejected_in_prod(self):
+        with pytest.raises(ValidationError, match="BCRYPT_ROUNDS"):
+            make(environment="prod", jwt_secret=STRONG_SECRET, bcrypt_rounds=4)
 
     def test_valid_prod_config(self):
         settings = make(environment="prod", jwt_secret=STRONG_SECRET)

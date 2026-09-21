@@ -3,11 +3,16 @@
 Mounted only when settings.test_endpoints_active (never in prod).
 """
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.db import get_db
+from app.models import OutboxEmail
 from app.seed.run import reset_and_seed
 
 router = APIRouter(prefix="/test", tags=["test-support"])
@@ -20,5 +25,66 @@ class ResetResponse(BaseModel):
 
 @router.post("/reset", response_model=ResetResponse)
 def reset_database(db: Session = Depends(get_db)) -> ResetResponse:
-    """Wipe every table and reload the deterministic seed data."""
+    """Wipe every table, reload the deterministic seed data and reset the clock."""
+    clock.reset()
     return ResetResponse(reset=True, seeded=reset_and_seed(db))
+
+
+# --- Email outbox -----------------------------------------------------------------------
+
+
+class EmailOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    to_address: str
+    subject: str
+    body: str
+    created_at: datetime
+
+
+@router.get("/emails", response_model=list[EmailOut])
+def list_emails(
+    to: str = Query(description="Recipient address (case-insensitive)"),
+    limit: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """Newest first."""
+    return db.scalars(
+        select(OutboxEmail)
+        .where(OutboxEmail.to_address == to.strip().lower())
+        .order_by(OutboxEmail.id.desc())
+        .limit(limit)
+    ).all()
+
+
+# --- Clock --------------------------------------------------------------------------------
+
+
+class ClockState(BaseModel):
+    now: datetime
+    offset_seconds: float
+    frozen: bool
+
+
+class ClockChange(BaseModel):
+    advance_seconds: float | None = None
+    freeze: bool | None = None
+    reset: bool = False
+
+
+@router.get("/clock", response_model=ClockState)
+def get_clock() -> dict:
+    return clock.state()
+
+
+@router.post("/clock", response_model=ClockState)
+def change_clock(change: ClockChange) -> dict:
+    """Examples: {"advance_seconds": 901} - {"freeze": true} - {"reset": true}."""
+    if change.reset:
+        clock.reset()
+    if change.freeze:
+        clock.freeze()
+    if change.advance_seconds:
+        clock.advance(timedelta(seconds=change.advance_seconds))
+    return clock.state()
