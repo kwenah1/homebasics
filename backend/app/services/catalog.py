@@ -61,7 +61,10 @@ def page_count(total: int, page_size: int) -> int:
 _SEARCHABLE = Product.name + " " + Product.description
 
 _ORDER_BY = {
-    ProductSort.NAME: (func.lower(Product.name), Product.id),
+    # COLLATE "C": byte-order sorting, identical on every server. Without it the order
+    # depended on the database locale (Neon: C; the CI postgres image: en_US.utf8, which
+    # ignores spaces/punctuation) - CI caught the difference.
+    ProductSort.NAME: (func.lower(Product.name).collate("C"), Product.id),
     ProductSort.PRICE_ASC: (Product.price_cents, Product.id),
     ProductSort.PRICE_DESC: (Product.price_cents.desc(), Product.id),
     ProductSort.NEWEST: (Product.created_at.desc(), Product.id.desc()),

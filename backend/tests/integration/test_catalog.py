@@ -145,6 +145,35 @@ class TestSort:
         for page in (1, 2, 3):
             assert skus(get(client, sort=sort, page=page)) == expected_page(sort, page)["skus"]
 
+    def test_name_sort_is_locale_independent(self, db):
+        """Regression (caught by CI): name order used to follow the server's locale.
+
+        The seed names really do sort differently under a linguistic collation, so if
+        COLLATE "C" were dropped this suite would fail on any en_US server (like CI's).
+        """
+        from sqlalchemy import select, text
+
+        from app.models import Product
+        from app.services.catalog import _ORDER_BY, ProductSort
+
+        # ICU "ka-shifted" ignores spaces/punctuation like glibc's en_US.utf8 (CI's default).
+        # Created inside the test transaction, so it's rolled back afterwards.
+        db.execute(
+            text(
+                "CREATE COLLATION IF NOT EXISTS test_en_shifted "
+                "(provider = icu, locale = 'en-US-u-ka-shifted')"
+            )
+        )
+        linguistic = db.scalars(
+            select(Product.sku)
+            .where(Product.is_archived.is_(False))
+            .order_by(text("lower(name) COLLATE test_en_shifted"), Product.id)
+        ).all()
+        assert linguistic != expected_page("name", page_size=60)["skus"]
+
+        compiled = str(select(Product.id).order_by(*_ORDER_BY[ProductSort.NAME]))
+        assert 'COLLATE "C"' in compiled
+
     def test_unrated_products_sort_last(self, client):
         last_page = get(client, sort="rating", page=3).json()["items"]
         assert last_page[-1]["rating_avg"] is None
