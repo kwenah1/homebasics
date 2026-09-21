@@ -2,15 +2,16 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
-import { CATEGORIES } from '../data/categories'
+import { categories } from '../test/catalogFixtures'
 import { renderApp } from '../test/render'
 
 describe('routing and layout', () => {
-  it('home page shows the hero and one tile per category', () => {
+  it('home page shows the hero and one tile per category from the API', async () => {
     renderApp('/')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/everyday essentials/i)
     const section = screen.getByRole('region', { name: /shop by category/i })
-    expect(within(section).getAllByRole('link')).toHaveLength(CATEGORIES.length)
+    expect(await within(section).findAllByRole('link')).toHaveLength(categories.length)
+    expect(within(section).getAllByText('10 products')).toHaveLength(categories.length)
   })
 
   it('mentions the $50 free-shipping threshold (CHK-03)', () => {
@@ -18,10 +19,10 @@ describe('routing and layout', () => {
     expect(screen.getByText(/free standard shipping on orders of \$50 or more/i)).toBeVisible()
   })
 
-  it('clicking a category tile navigates to the category page', async () => {
+  it('clicking a category tile opens that category and highlights the nav', async () => {
     renderApp('/')
-    await userEvent.click(screen.getByTestId('category-tile-laundry'))
-    expect(screen.getByTestId('placeholder-page')).toBeInTheDocument()
+    await userEvent.click(await screen.findByTestId('category-tile-laundry'))
+    expect(await screen.findByTestId('list-heading')).toHaveTextContent('Laundry')
     expect(screen.getByTestId('nav-category-laundry')).toHaveClass('font-semibold')
   })
 

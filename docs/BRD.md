@@ -64,6 +64,24 @@ built as a realistic system-under-test for SDET practice across every testing la
 - **CAT-04** Product detail: images, price, stock status, reviews.
 - **CAT-05** Stock <= 5 shows "Only X left"; stock 0 shows "Out of stock" and disables Add.
 
+#### Catalog rules clarified during Milestone 3
+- **CAT-01a** Page size defaults to 20 (1-50 allowed). A page past the end returns an empty list
+  with the real `total`, not an error. Every sort ends with a unique tie-breaker (id), so
+  walking all pages returns each product exactly once.
+- **CAT-02a** Keywords are split on whitespace (max 8) and **all** must appear, case-insensitively,
+  somewhere in name + description. `%`, `_` and `\` are literal characters, not wildcards.
+- **CAT-03a** Prices are filtered in cents with **inclusive** bounds; min > max is a 422. Sorts:
+  name, price ↑, price ↓, newest, rating. Rating sorts unrated products last, then by more
+  reviews. Unknown query parameters are rejected with 422.
+- **CAT-05a** The API never exposes exact stock for well-stocked items: `stock_status` is
+  `in_stock` / `low_stock` / `out_of_stock`, and `stock_left` is a number only when 1-5.
+  `max_order_qty` = min(10, stock).
+- **CAT-06** Ratings (`rating_avg`, `rating_count`) are stored on products so rating sort works
+  now. Seed values are deterministic; Phase 2 reviews (REV) will maintain them.
+- **CAT-07** The storefront URL holds the list state (`?q=&min=&max=&in_stock=1&sort=&page=`,
+  prices in dollars), so every view can be shared, reloaded and reached with Back. Malformed
+  values are ignored rather than breaking the page.
+
 ### Cart (CRT)
 - **CRT-01** Add/update/remove. Quantity per line 1-10 and never above available stock.
 - **CRT-02** Guest cart in localStorage; merges into account cart on login (quantities summed,
@@ -166,7 +184,7 @@ Traceability: see [traceability.md](traceability.md).
 
 1. Foundation - repo, CI, DB + migrations, seed data, test harness **(done)**
 2. Accounts & auth **(done)** - rate limiting on auth endpoints deferred to M7 (NFR-SEC)
-3. Catalog & search
+3. Catalog & search **(done)** - performance budget (NFR-PERF) measured with k6 in M7
 4. Cart & guest-merge
 5. Checkout, pricing, mock payments, order state machine
 6. Admin

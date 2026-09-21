@@ -7,6 +7,10 @@ import { expect, test } from '../fixtures'
 const PUBLIC_PAGES = [
   { name: 'home', path: '/' },
   { name: 'category', path: '/c/kitchen' },
+  { name: 'search results with filters', path: '/products?q=towel&max=50&in_stock=1' },
+  { name: 'empty results', path: '/products?q=lawnmower' },
+  { name: 'product detail (low stock)', path: '/p/glass-cleaner-26oz' },
+  { name: 'product detail (out of stock)', path: '/p/dish-drying-rack' },
   { name: '404', path: '/missing' },
   { name: 'sign in', path: '/login' },
   { name: 'register', path: '/register' },
