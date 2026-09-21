@@ -13,7 +13,10 @@ concurrency:
 env:
   PYTHON_VERSION: '3.14'
   NODE_VERSION: '22'
-  DB_URL: postgresql+psycopg://homebasics:homebasics@localhost:5432/homebasics
+  # The env context can't be referenced from job-level env, so the URLs are spelled out here.
+  # Each job gets its own throwaway Postgres service, so sharing the URL is safe.
+  DATABASE_URL: postgresql+psycopg://homebasics:homebasics@localhost:5432/homebasics
+  TEST_DATABASE_URL: postgresql+psycopg://homebasics:homebasics@localhost:5432/homebasics
 
 jobs:
   backend:
@@ -27,8 +30,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
     defaults: { run: { working-directory: backend } }
-    env:
-      TEST_DATABASE_URL: ${{ env.DB_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -71,7 +72,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
     env:
-      DATABASE_URL: ${{ env.DB_URL }}
       ENVIRONMENT: test
       ENABLE_TEST_ENDPOINTS: 'true'
       JWT_SECRET: ci-only-secret-not-used-in-production-000000
