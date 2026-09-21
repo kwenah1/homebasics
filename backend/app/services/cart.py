@@ -262,7 +262,7 @@ def merge(db: Session, user: User, items: list[GuestItem]) -> MergeOut:
     capped: list[CappedLine] = []
     skipped: list[SkippedLine] = []
 
-    for product_id, (quantity, _seen) in combine_guest_items(items).items():
+    for product_id, (quantity, seen) in combine_guest_items(items).items():
         product = db.get(Product, product_id)
         if product is None or product.is_archived:
             skipped.append(SkippedLine(product_id=product_id, reason="unavailable"))
@@ -281,12 +281,15 @@ def merge(db: Session, user: User, items: list[GuestItem]) -> MergeOut:
         if line:
             line.quantity = kept  # the account's recorded price is kept (CRT-03)
         else:
+            # Record the price the guest actually saw, so a change that happened before they
+            # signed in is still flagged (CRT-03). Only ever used for the notice - totals and
+            # charges always use today's price.
             db.add(
                 CartItem(
                     cart_id=cart.id,
                     product_id=product_id,
                     quantity=kept,
-                    price_cents_when_added=product.price_cents,
+                    price_cents_when_added=seen if seen is not None else product.price_cents,
                 )
             )
         db.flush()

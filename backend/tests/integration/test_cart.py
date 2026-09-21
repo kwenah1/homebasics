@@ -390,6 +390,22 @@ class TestMerge:
         body = self.merge(client, (products["KIT-001"], 1)).json()
         assert lines_of(body["cart"])["KIT-001"]["price_when_added_cents"] == 2499
 
+    def test_price_the_guest_saw_survives_sign_in(self, client, customer, products):
+        """Regression (found by E2E): a price rise before sign-in used to go unflagged,
+        because the merged line recorded today's price instead of the one the guest saw."""
+        body = client.post(
+            f"{CART}/merge",
+            json={
+                "items": [
+                    {"product_id": products["KIT-001"].id, "quantity": 1, "price_cents_seen": 1999}
+                ]
+            },
+        ).json()
+        line = lines_of(body["cart"])["KIT-001"]
+        assert (line["price_when_added_cents"], line["price_change_cents"]) == (1999, 500)
+        assert line["unit_price_cents"] == 2499  # charged at today's price, never the seen one
+        assert body["cart"]["has_price_changes"] is True
+
     def test_empty_merge_is_a_no_op(self, client, customer, products):
         add(client, products["KIT-001"], 2)
         body = client.post(f"{CART}/merge", json={"items": []}).json()

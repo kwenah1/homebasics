@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 
 import { useProduct } from '../../api/catalog'
 import { ApiError } from '../../api/client'
+import { useCart } from '../../cart/CartContext'
+import { CartLimitError } from '../../cart/guestCart'
 import { ProductImage, Rating, StockBadge } from '../../components/catalog'
 import { FormAlert } from '../../components/form'
 import { formatCents } from '../../lib/money'
@@ -11,8 +13,13 @@ import { NotFoundPage } from '../NotFoundPage'
 export function ProductDetailPage() {
   const { slug = '' } = useParams()
   const { data: product, isPending, isError, error } = useProduct(slug)
+  const { add, cart, mode } = useCart()
+  // Regression (found by E2E): while the session was still being restored, Add went into the
+  // guest cart, so the item only merged into the account later - after prices could change.
+  const sessionPending = mode === 'loading'
   const [qty, setQty] = useState(1)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [adding, setAdding] = useState(false)
 
   if (isError && error instanceof ApiError && error.status === 404) return <NotFoundPage />
   if (isError) return <FormAlert message="We couldn't load this product." testId="detail-error" />
@@ -25,6 +32,22 @@ export function ProductDetailPage() {
   }
 
   const soldOut = product.max_order_qty === 0
+  const inCart = cart?.items.find((i) => i.product_id === product.id)?.quantity ?? 0
+
+  const onAdd = async () => {
+    setResult(null)
+    setAdding(true)
+    try {
+      await add(product, qty)
+      setResult({ ok: true, text: `Added ${qty} to your cart.` })
+    } catch (e) {
+      const message =
+        e instanceof CartLimitError || e instanceof ApiError ? e.message : 'Could not add to cart.'
+      setResult({ ok: false, text: message })
+    } finally {
+      setAdding(false)
+    }
+  }
 
   return (
     <article className="space-y-6" data-testid="product-detail" data-sku={product.sku}>
@@ -74,15 +97,34 @@ export function ProductDetailPage() {
             </label>
             <button
               type="button"
-              disabled={soldOut}
+              disabled={soldOut || adding || sessionPending}
+              aria-busy={adding || undefined}
               data-testid="add-to-cart"
-              onClick={() => setNotice(`Cart arrives in Milestone 4 - you picked ${qty}.`)}
+              onClick={onAdd}
               className="flex-1 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:bg-stone-400"
             >
-              {soldOut ? 'Out of stock' : 'Add to cart'}
+              {soldOut ? 'Out of stock' : adding ? 'Adding…' : 'Add to cart'}
             </button>
           </div>
-          <FormAlert tone="success" message={notice} testId="add-to-cart-notice" />
+          {inCart > 0 && (
+            <p className="text-sm text-stone-600" data-testid="in-cart">
+              {inCart} already in your cart.
+            </p>
+          )}
+          {result && (
+            <div
+              role={result.ok ? 'status' : 'alert'}
+              data-testid={result.ok ? 'add-to-cart-success' : 'add-to-cart-error'}
+              className={`rounded-lg border px-3 py-2 text-sm ${result.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-800'}`}
+            >
+              {result.text}{' '}
+              {result.ok && (
+                <Link to="/cart" className="font-medium underline" data-testid="view-cart">
+                  View cart
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </article>

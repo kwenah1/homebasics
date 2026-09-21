@@ -2,6 +2,7 @@ import { test as base, expect } from '@playwright/test'
 
 import { AccountPage } from '../pages/AccountPage'
 import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage } from '../pages/AuthPages'
+import { CartPage } from '../pages/CartPage'
 import { ProductDetailPage, ProductListPage } from '../pages/CatalogPages'
 import { HomePage } from '../pages/HomePage'
 import { API_URL, Api, uniqueUser } from '../support/api'
@@ -17,6 +18,7 @@ type Fixtures = {
   accountPage: AccountPage
   listPage: ProductListPage
   detailPage: ProductDetailPage
+  cartPage: CartPage
   /** A brand-new registered customer (not signed in in the browser). */
   user: TestUser
   /** Same as `user`, but the browser already holds its session cookie. */
@@ -35,6 +37,7 @@ export const test = base.extend<Fixtures>({
   accountPage: async ({ page }, use) => use(new AccountPage(page)),
   listPage: async ({ page }, use) => use(new ProductListPage(page)),
   detailPage: async ({ page }, use) => use(new ProductDetailPage(page)),
+  cartPage: async ({ page }, use) => use(new CartPage(page)),
 
   user: async ({ api }, use) => {
     const user = uniqueUser()

@@ -35,12 +35,25 @@ filter/sort/page combinations per run and each must match the oracle exactly.
 | CAT-07 | List state in URL: reload, Back, deep links, sanitised | `catalogParams.test.ts`, `catalog.spec.ts::page, sort and filters survive reload and Back` | F E | Covered |
 | ADM-01 | Archived products hidden from list, detail and category counts | `test_catalog.py` (archived tests), `TestCategories` | I | Covered (storefront side) |
 
+## Cart (Milestone 4)
+
+The backend cart is also checked by a **Hypothesis stateful test**
+(`backend/tests/integration/test_cart_stateful.py`): random sequences of add / set quantity /
+remove / merge / clear run against the real API, and after every step the API must match a
+small in-memory model. Any failing sequence is shrunk to the shortest reproduction.
+
+| Req | Description | Tests | Layers | Status |
+|---|---|---|---|---|
+| CRT-01 / 01a | 1-10 per line, and never more than stock; refused (not trimmed); client can't set a price | `tests/unit/test_cart_rules.py::test_line_limit`, `tests/integration/test_cart.py::TestAdd`, `TestUpdateRemove`, stateful test, DB check `ck_cart_items_quantity_range`, `guestCart.test.ts::addToGuestLines`, `ProductDetailPage.test.tsx`, `e2e/tests/cart.spec.ts` (11th unit, stock 1) | U I F E | Covered |
+| CRT-02 / 02a | Guest cart: validated storage, cross-tab sync; merge at sign-in (sum, cap, skip, report, clear, no double count) | `test_cart_rules.py::test_merged_quantity*`, `test_cart.py::TestMerge`, `TestPreview`, `guestCart.test.ts`, `CartPage.test.tsx` (merge suite incl. failure + retry), `cart.spec.ts` (merge, second tab, tampered storage), `api/cart.spec.ts` | U I F E A | Covered |
+| CRT-03 / 03a | Price when added recorded (guests: price seen, across sign-in); rises/drops flagged; acknowledge; totals use today's price | `test_cart.py::TestPriceChanges`, `test_price_the_guest_saw_survives_sign_in`, `CartPage.test.tsx`, `e2e/tests/isolated/cart-changes.spec.ts` | I F E | Covered |
+| CRT-04 / 04a | No reservation: lines re-validated; flagged lines excluded from subtotal; checkout blocked | `test_cart_rules.py::test_line_issue`, `test_cart.py::TestNoReservation`, `CartPage.test.tsx`, `isolated/cart-changes.spec.ts` | U I F E | Covered |
+| CRT-05 | Free-shipping estimate at the $49.99/$50.00 boundary | `test_cart_rules.py::test_amount_to_free_shipping`, `test_cart.py::TestFreeShippingEstimate`, `CartPage.test.tsx`, `cart.spec.ts` | U I F E | Covered |
+| CRT-06 | Concurrent requests serialised (row lock) | `e2e/tests/api/cart.spec.ts::concurrent adds...` (6 parallel adds -> five 200s, one 409, qty 10) | A | Covered |
 ## Later milestones
 
 | Req | Description | Tests | Status |
 |---|---|---|---|
-| CRT-01 | Quantity 1-10 | DB check `ck_cart_items_quantity_range` | Planned M4 |
-| CRT-02..04 | Cart merge, price change, no reserve | - | Planned M4 |
 | CHK-01..02 | Calculation order, tax | `test_seed_data.py::test_tax_table_covers_50_states_plus_dc`, `test_meta.py` | Partial (data) |
 | CHK-03 | Free shipping >= $50 | `test_seed_data.py::test_boundary_values_present_for_free_shipping`, `routing.test.tsx` (copy) | Partial |
 | CHK-05 | Integer cents, totals add up | `test_schema.py::test_order_total_must_add_up` | Partial (DB level) |
@@ -74,3 +87,11 @@ filter/sort/page combinations per run and each must match the oracle exactly.
 | 6 | E2E | Test design: waiting for "results visible" after a search read the *previous* results (race) | Page object waits for the matching API response: `e2e/pages/CatalogPages.ts::afterFetch` |
 | 7 | Integration test | Test expectation, not app: a literal `%` search correctly matches the two descriptions containing "%" | Test corrected: `test_catalog.py::test_percent_sign_matches_literally` |
 | 8 | CI (Postgres 17 container) | Name sort followed the server locale: Neon (C.UTF-8) and CI (en_US.utf8, which ignores spaces and punctuation) returned different orders | `ORDER BY lower(name) COLLATE "C"`: `test_catalog.py::test_name_sort_is_locale_independent` (builds a glibc-like ICU collation to prove the data is locale-sensitive) |
+
+## Defects found by the suites during Milestone 4
+
+| # | Found by | Defect | Fix + regression test |
+|---|---|---|---|
+| 9 | E2E (isolated price-change test) | Clicking Add while the session was still being restored put the item in the **guest** cart; it merged into the account on a later page load | Add is disabled until the session is known; the cart refuses to guess: `ProductDetailPage.test.tsx::Add waits until the session is known` |
+| 10 | Same E2E test | A price change before sign-in went unflagged: merged lines recorded today's price, not the one the guest saw (CRT-03) | Merge records `price_cents_seen` for new lines (notice only, never charged): `test_cart.py::test_price_the_guest_saw_survives_sign_in` |
+| 11 | Frontend unit test | Test-design defect: the fake `GET /cart` always returned an empty cart, so the refetch after a merge "lost" the items | Stateful fake API: `frontend/src/test/cartFixtures.ts::accountCartServer` |

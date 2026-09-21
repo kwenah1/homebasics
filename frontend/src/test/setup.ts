@@ -13,5 +13,6 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   cleanup()
+  localStorage.clear() // guest carts must not leak between tests
 })
 afterAll(() => server.close())

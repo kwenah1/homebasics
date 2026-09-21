@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 
 import type { TokenResponse, User } from '../api/auth'
+import { EMPTY_CART } from '../api/cart'
 import type { Health } from '../api/health'
 import { categories, page } from './catalogFixtures'
 
@@ -33,6 +34,7 @@ export const handlers = [
   http.get('/api/v1/health', () => HttpResponse.json(healthyResponse)),
   http.get('/api/v1/categories', () => HttpResponse.json(categories)),
   http.get('/api/v1/products', () => HttpResponse.json(page([]))),
+  http.get('/api/v1/cart', () => HttpResponse.json(EMPTY_CART)),
   http.post('/api/v1/auth/refresh', () => apiError(401, 'invalid_refresh_token')),
   http.post('/api/v1/auth/logout', () => new HttpResponse(null, { status: 204 })),
 ]

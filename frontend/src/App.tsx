@@ -7,11 +7,11 @@ import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
+import { CartPage } from './pages/cart/CartPage'
 import { ProductDetailPage } from './pages/catalog/ProductDetailPage'
 import { ProductListPage } from './pages/catalog/ProductListPage'
 import { HomePage } from './pages/HomePage'
 import { NotFoundPage } from './pages/NotFoundPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
 
 export function AppRoutes() {
   return (
@@ -25,7 +25,7 @@ export function AppRoutes() {
         <Route path="register" element={<RegisterPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
-        <Route path="cart" element={<PlaceholderPage title="Your cart" milestone={4} />} />
+        <Route path="cart" element={<CartPage />} />
         <Route element={<RequireAuth />}>
           <Route path="account" element={<AccountPage />} />
         </Route>

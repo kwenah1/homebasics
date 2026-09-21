@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { AppRoutes } from '../App'
 import { setAccessToken } from '../api/client'
 import { AuthProvider } from '../auth/AuthContext'
+import { CartProvider } from '../cart/CartContext'
 
 /** Render with a fresh QueryClient and auth state (no retries, no shared cache). */
 export function renderWithProviders(ui: ReactElement, { route = '/' } = {}) {
@@ -14,7 +15,9 @@ export function renderWithProviders(ui: ReactElement, { route = '/' } = {}) {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        <CartProvider>
+          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        </CartProvider>
       </AuthProvider>
     </QueryClientProvider>,
   )

@@ -89,6 +89,27 @@ built as a realistic system-under-test for SDET practice across every testing la
 - **CRT-03** Cart always shows current price; notice shown if price changed since adding.
 - **CRT-04** Adding to cart does not reserve stock.
 
+#### Cart rules clarified during Milestone 4
+- **CRT-01a** Adding more than a line allows (the smaller of 10 and current stock) is **refused** with
+  409 `quantity_limit` plus `max_quantity` and `in_cart`. The cart never silently trims. Setting a
+  quantity above stock returns 409 `insufficient_stock` with `available`. Clients can never
+  send a price.
+- **CRT-02a** Guest cart (browser storage) holds at most 50 lines and is validated and repaired on every
+  read. Merge: duplicate lines are summed, then capped. A merge never *reduces* a line the account
+  already had. Archived, unknown and out-of-stock items are skipped. The response reports every
+  `capped` and `skipped` line. The browser clears its copy only after a successful merge, so a
+  failure loses nothing and a retry can't double-count.
+- **CRT-03a** Each line records the price at the time it was added (for guests, the price they
+  saw, including across sign-in). The cart shows rises and drops; "OK, got it" accepts them.
+  Totals always use today's price.
+- **CRT-04a** No stock is held. Every cart read re-checks each line and flags it `unavailable`,
+  `out_of_stock` or `insufficient_stock` (with `available`). Flagged lines are left out of the subtotal,
+  and checkout (M5) is blocked while any flag remains.
+- **CRT-05** The cart shows a free-shipping estimate: the amount still needed to reach $50.00
+  (CHK-03). Checkout makes the final decision.
+- **CRT-06** Concurrent cart requests for the same shopper are applied one at a time
+  (per-user row lock). Double clicks or two tabs can never exceed the limits or cause errors.
+
 ### Checkout & pricing (CHK)
 - **CHK-01** Calculation order: subtotal -> discount -> tax -> shipping -> total.
 - **CHK-02** Tax = flat rate per ship-to state (table), applied to discounted subtotal, never to
@@ -185,7 +206,7 @@ Traceability: see [traceability.md](traceability.md).
 1. Foundation - repo, CI, DB + migrations, seed data, test harness **(done)**
 2. Accounts & auth **(done)** - rate limiting on auth endpoints deferred to M7 (NFR-SEC)
 3. Catalog & search **(done)** - performance budget (NFR-PERF) measured with k6 in M7
-4. Cart & guest-merge
+4. Cart & guest-merge **(done)**
 5. Checkout, pricing, mock payments, order state machine
 6. Admin
 7. Test hardening - contract, perf, security, bug-injection mode

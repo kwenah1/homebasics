@@ -63,4 +63,37 @@ export class Api {
   async resetClock() {
     await this.request.post(`${API_URL}/api/v1/test/clock`, { data: { reset: true } })
   }
+
+  /** Sign in over the API only (no browser cookie); returns a bearer header. */
+  async authHeader(user: TestUser): Promise<Record<string, string>> {
+    const response = await this.request.post(`${API_URL}/api/v1/auth/login`, {
+      data: { email: user.email, password: user.password },
+    })
+    if (!response.ok()) throw new Error(`login failed: ${await response.text()}`)
+    return { Authorization: `Bearer ${(await response.json()).access_token}` }
+  }
+
+  async productId(slug: string): Promise<number> {
+    const response = await this.request.get(`${API_URL}/api/v1/products/${slug}`)
+    return (await response.json()).id
+  }
+
+  async addToAccountCart(user: TestUser, slug: string, quantity: number) {
+    const response = await this.request.post(`${API_URL}/api/v1/cart/items`, {
+      headers: await this.authHeader(user),
+      data: { product_id: await this.productId(slug), quantity },
+    })
+    if (!response.ok()) throw new Error(`add to cart failed: ${await response.text()}`)
+  }
+
+  /** Test-only: change a product's price / stock / archived flag. Global state! */
+  async changeProduct(
+    sku: string,
+    change: { price_cents?: number; stock_qty?: number; is_archived?: boolean },
+  ) {
+    const response = await this.request.patch(`${API_URL}/api/v1/test/products/${sku}`, {
+      data: change,
+    })
+    if (!response.ok()) throw new Error(`change product failed: ${await response.text()}`)
+  }
 }
