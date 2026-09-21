@@ -53,8 +53,11 @@ def seed(db: Session) -> dict[str, int]:
     db.flush()
 
     rows = [(p, False) for p in data.PRODUCTS] + [(p, True) for p in data.ARCHIVED_PRODUCTS]
-    for (cat_slug, sku, name, price, stock, desc), archived in rows:
+    for position, ((cat_slug, sku, name, price, stock, desc), archived) in enumerate(rows):
+        rating_avg, rating_count = data.seed_rating(position)
         product = Product(
+            rating_avg=rating_avg,
+            rating_count=rating_count,
             category_id=categories[cat_slug].id,
             sku=sku,
             name=name,

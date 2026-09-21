@@ -392,3 +392,15 @@ TAX_RATES: list[tuple[str, str, Decimal]] = [
     ("WI", "Wisconsin", Decimal("0.05")),
     ("WY", "Wyoming", Decimal("0.04")),
 ]
+
+
+def seed_rating(position: int) -> tuple[Decimal | None, int]:
+    """Deterministic ratings for CAT-03 sorting, until Phase 2 reviews exist.
+
+    ``position`` is the product's index in PRODUCTS. Every 7th product (6, 13, 20, ...) has
+    no reviews yet, so tests can check that unrated products sort last.
+    """
+    if position % 7 == 6:
+        return None, 0
+    average = (Decimal(30 + (position * 13) % 21) / 10).quantize(Decimal("0.1"))  # 3.0..5.0
+    return average, 3 + (position * 37) % 180

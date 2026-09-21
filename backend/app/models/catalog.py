@@ -1,4 +1,16 @@
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, Text
+from decimal import Decimal
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -20,6 +32,18 @@ class Product(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("price_cents >= 0", name="price_non_negative"),
         CheckConstraint("stock_qty >= 0", name="stock_non_negative"),
+        CheckConstraint("rating_count >= 0", name="rating_count_non_negative"),
+        CheckConstraint(
+            "(rating_count = 0 AND rating_avg IS NULL) OR "
+            "(rating_count > 0 AND rating_avg BETWEEN 1 AND 5)",
+            name="rating_consistent",
+        ),
+        # CAT-02: trigram index makes '%term%' ILIKE search over name + description fast.
+        Index(
+            "ix_products_search_trgm",
+            text("(name || ' ' || description) gin_trgm_ops"),
+            postgresql_using="gin",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -35,6 +59,11 @@ class Product(TimestampMixin, Base):
     stock_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # ADM-01: archived products are hidden from the storefront but kept for order history.
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # CAT-03 sort by rating. Denormalized; Phase 2 reviews (REV) will maintain these.
+    rating_avg: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
+    rating_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     category: Mapped[Category] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(
