@@ -72,11 +72,48 @@ test.describe('accessibility (WCAG 2.1 AA) @a11y', () => {
       data: { email: 'admin@homebasics.test', password: 'Admin12345' },
     })
     expect(login.ok()).toBeTruthy()
-    for (const path of ['/admin', '/admin/products', '/admin/categories', '/admin/orders', '/admin/products/new']) {
+    for (const path of [
+      '/admin',
+      '/admin/products',
+      '/admin/categories',
+      '/admin/orders',
+      '/admin/products/new',
+      '/admin/returns',
+      '/admin/coupons',
+      '/admin/reviews',
+    ]) {
       await page.goto(path)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
       await expectNoViolations(page)
     }
+  })
+
+  test('wishlist, coupon field and a delivered order with the return form have no axe violations (M8)', async ({
+    page,
+    api,
+    shopper,
+  }) => {
+    await page.goto('/p/all-purpose-cleaner-spray-32oz')
+    await page.getByTestId('wishlist-toggle').click()
+    await expect(page.getByTestId('wishlist-toggle')).toHaveAttribute('aria-pressed', 'true')
+    await expectNoViolations(page) // product page with the reviews section, signed in
+
+    await page.goto('/wishlist')
+    await expect(page.getByTestId('wishlist-item')).toHaveCount(1)
+    await expectNoViolations(page)
+
+    await addFromProductPage(page, 'all-purpose-cleaner-spray-32oz', 1)
+    await page.goto('/checkout')
+    await page.getByTestId('coupon-input').fill('NOPE')
+    await page.getByTestId('coupon-apply').click()
+    await expect(page.getByTestId('coupon-error')).toBeVisible()
+    await expectNoViolations(page) // coupon field in its error state
+
+    const orderNumber = await api.buyAndDeliver(shopper, 'non-scratch-scrub-sponges-6-pk', 1)
+    await page.goto(`/orders/${orderNumber}`)
+    await page.getByTestId('return-start').click()
+    await expect(page.getByTestId('return-form')).toBeVisible()
+    await expectNoViolations(page)
   })
 
   test('account page with addresses has no axe violations', async ({

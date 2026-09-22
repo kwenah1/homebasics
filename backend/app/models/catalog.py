@@ -33,6 +33,10 @@ class Product(TimestampMixin, Base):
         CheckConstraint("price_cents >= 0", name="price_non_negative"),
         CheckConstraint("stock_qty >= 0", name="stock_non_negative"),
         CheckConstraint("rating_count >= 0", name="rating_count_non_negative"),
+        # REV-03: the average is derived from the star total, so it can never drift.
+        CheckConstraint(
+            "rating_total BETWEEN rating_count AND 5 * rating_count", name="rating_total_range"
+        ),
         CheckConstraint(
             "(rating_count = 0 AND rating_avg IS NULL) OR "
             "(rating_count > 0 AND rating_avg BETWEEN 1 AND 5)",
@@ -59,9 +63,14 @@ class Product(TimestampMixin, Base):
     stock_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # ADM-01: archived products are hidden from the storefront but kept for order history.
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # CAT-03 sort by rating. Denormalized; Phase 2 reviews (REV) will maintain these.
+    # CAT-03 sort by rating. Denormalized and maintained by reviews (REV-03): count and star
+    # total change with relative SQL updates, the average is recomputed from them. Seeded
+    # values stand for ratings collected before reviews existed.
     rating_avg: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
     rating_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    rating_total: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
 

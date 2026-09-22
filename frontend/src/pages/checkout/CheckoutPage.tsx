@@ -27,6 +27,11 @@ export function CheckoutPage() {
   const [method, setMethod] = useState<ShippingMethod>('standard')
   const [placing, setPlacing] = useState(false)
   const [error, setError] = useState<{ text: string; lines?: Problem[] } | null>(null)
+  // CPN-03: at most one code. `coupon` is the code the quote was priced with.
+  const [coupon, setCoupon] = useState<string | null>(null)
+  const [couponInput, setCouponInput] = useState('')
+  const [couponError, setCouponError] = useState<string | null>(null)
+  const [applying, setApplying] = useState(false)
   // One key per "attempt to place this order". Kept across retries after a network error;
   // replaced after any definitive answer (see shouldKeepKey).
   const idempotencyKey = useRef(newIdempotencyKey())
@@ -38,10 +43,42 @@ export function CheckoutPage() {
   const { cart, isLoading: cartLoading } = useCart()
   const cartVersion = cart ? `${cart.item_count}:${cart.subtotal_cents}` : null
   const quote = useQuery({
-    queryKey: ['quote', addressId, method, cartVersion],
-    queryFn: () => orderApi.quote(addressId!, method),
+    queryKey: ['quote', addressId, method, cartVersion, coupon],
+    // A code that stops fitting (the cart shrank below the minimum spend, it expired...) is
+    // dropped with its reason and the quote is priced without it, so the page always shows
+    // a total that can actually be placed.
+    queryFn: async () => {
+      try {
+        return { quote: await orderApi.quote(addressId!, method, coupon), dropped: null }
+      } catch (e) {
+        if (coupon && e instanceof ApiError && e.code === 'coupon_rejected') {
+          return { quote: await orderApi.quote(addressId!, method), dropped: e.message }
+        }
+        throw e
+      }
+    },
     enabled: addressId !== null && !cartLoading && cartVersion !== null,
   })
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim()
+    if (!code || addressId === null) return
+    setApplying(true)
+    setCouponError(null)
+    try {
+      const priced = await orderApi.quote(addressId, method, code)
+      const applied = priced.coupon?.code ?? null
+      queryClient.setQueryData(['quote', addressId, method, cartVersion, applied], { quote: priced, dropped: null })
+      setCoupon(applied)
+      setCouponInput('')
+    } catch (e) {
+      setCouponError(
+        e instanceof ApiError ? (e.fields.coupon_code ?? e.message) : 'We could not check that code. Please try again.',
+      )
+    } finally {
+      setApplying(false)
+    }
+  }
 
   if (addressesLoading) return <p className="text-sm text-stone-500">Loading…</p>
 
@@ -59,11 +96,18 @@ export function CheckoutPage() {
 
   const placeOrder = async () => {
     if (!quote.data || addressId === null) return
+    const priced = quote.data.quote
     setError(null)
     setPlacing(true)
     try {
       const order = await orderApi.place(
-        { address_id: addressId, shipping_method: method, expected_total_cents: quote.data.total_cents },
+        {
+          address_id: addressId,
+          shipping_method: method,
+          expected_total_cents: priced.total_cents,
+          // Exactly the code this total was priced with (never a dropped one).
+          ...(priced.coupon ? { coupon_code: priced.coupon.code } : {}),
+        },
         idempotencyKey.current,
       )
       queryClient.setQueryData(['cart', 'account'], undefined)
@@ -71,7 +115,13 @@ export function CheckoutPage() {
       navigate(`/orders/${order.order_number}/pay`)
     } catch (e) {
       if (!shouldKeepKey(e)) idempotencyKey.current = newIdempotencyKey()
-      if (e instanceof ApiError && e.code === 'total_changed') {
+      if (e instanceof ApiError && e.code === 'coupon_rejected') {
+        // Valid when quoted, not any more (disabled, used up...). Never charge a total the
+        // shopper didn't see: drop the code, re-quote, and ask them to look again.
+        setCoupon(null)
+        setCouponError(e.message)
+        setError({ text: `Your code ${priced.coupon?.code ?? ''} can no longer be used, so we've updated your total. Please check it and place your order again.` })
+      } else if (e instanceof ApiError && e.code === 'total_changed') {
         await quote.refetch()
         setError({ text: 'Your total changed since you opened this page. Please check it and place your order again.' })
       } else if (e instanceof ApiError && e.code === 'cart_has_issues') {
@@ -84,7 +134,7 @@ export function CheckoutPage() {
     }
   }
 
-  const q = quote.data
+  const q = quote.data?.quote
 
   return (
     <div className="space-y-6">
@@ -157,6 +207,12 @@ export function CheckoutPage() {
                 <dt>Subtotal</dt>
                 <dd data-testid="summary-subtotal">{formatCents(q.subtotal_cents)}</dd>
               </div>
+              {q.coupon && (
+                <div className="flex justify-between text-green-800">
+                  <dt>Discount ({q.coupon.code})</dt>
+                  <dd data-testid="summary-discount">−{formatCents(q.discount_cents)}</dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt>
                   Tax ({q.tax_state} {formatRate(q.tax_rate)})
@@ -173,6 +229,19 @@ export function CheckoutPage() {
               </div>
             </dl>
           )}
+          <CouponBox
+            applied={q?.coupon ?? null}
+            input={couponInput}
+            onInput={setCouponInput}
+            onApply={applyCoupon}
+            onRemove={() => {
+              setCoupon(null)
+              setCouponError(null)
+            }}
+            applying={applying}
+            error={couponError ?? quote.data?.dropped ?? null}
+            disabled={!q}
+          />
           {q && !q.can_place_order && (
             <p className="text-sm text-red-700" data-testid="checkout-blocked">
               {q.blocking_reason}{' '}
@@ -209,5 +278,78 @@ export function CheckoutPage() {
         </aside>
       </div>
     </div>
+  )
+}
+
+function CouponBox({
+  applied,
+  input,
+  onInput,
+  onApply,
+  onRemove,
+  applying,
+  error,
+  disabled,
+}: {
+  applied: { code: string; description: string; discount_cents: number } | null
+  input: string
+  onInput: (value: string) => void
+  onApply: () => void
+  onRemove: () => void
+  applying: boolean
+  error: string | null
+  disabled: boolean
+}) {
+  if (applied) {
+    return (
+      <div className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm" data-testid="coupon-applied">
+        <span>
+          <span className="font-semibold">{applied.code}</span>
+          {applied.description && <span className="text-stone-600"> - {applied.description}</span>}
+        </span>
+        <button type="button" onClick={onRemove} className="font-medium text-brand-700 underline" data-testid="coupon-remove">
+          Remove
+        </button>
+      </div>
+    )
+  }
+  return (
+    <form
+      className="space-y-1"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onApply()
+      }}
+    >
+      <label htmlFor="coupon" className="text-sm font-medium">
+        Coupon code
+      </label>
+      <div className="flex gap-2">
+        <input
+          id="coupon"
+          value={input}
+          onChange={(e) => onInput(e.target.value)}
+          maxLength={20}
+          autoComplete="off"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'coupon-error' : undefined}
+          className="min-w-0 flex-1 rounded-lg border border-stone-300 px-3 py-2 text-sm uppercase"
+          data-testid="coupon-input"
+        />
+        <button
+          type="submit"
+          disabled={disabled || applying || !input.trim()}
+          className="rounded-lg border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50 disabled:opacity-60"
+          data-testid="coupon-apply"
+        >
+          {applying ? 'Checking…' : 'Apply'}
+        </button>
+      </div>
+      {error && (
+        <p id="coupon-error" role="alert" className="text-sm text-red-700" data-testid="coupon-error">
+          {error}
+        </p>
+      )}
+    </form>
   )
 }

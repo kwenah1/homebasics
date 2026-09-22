@@ -33,7 +33,8 @@ ROUTES = admin_routes()
 
 
 def test_admin_surface_is_what_we_expect():
-    assert len(ROUTES) == 17  # update deliberately when adding admin endpoints
+    # Update deliberately when adding admin endpoints. M8: +4 coupons, +2 reviews, +5 returns.
+    assert len(ROUTES) == 28
 
 
 @pytest.mark.parametrize(("method", "path"), ROUTES, ids=[f"{m} {p}" for m, p in ROUTES])

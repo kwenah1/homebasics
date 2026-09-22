@@ -173,6 +173,57 @@ PENDING_PAYMENT --pay--> PAID --> PROCESSING --> SHIPPED --> DELIVERED
   product per user; rating 1-5.
 - **RET** Returns within 30 days of delivery; refund to original payment.
 
+Clarifications (M8):
+
+- **CPN-01** A code is 3-20 letters, digits or hyphens, case-insensitive (stored uppercase).
+  Percent (1-100 %) or fixed amount; optional minimum spend (on the subtotal before discount),
+  start and expiry (active from `starts_at` up to but not including `expires_at`), total uses
+  and uses per customer (default 1). Code, kind and amount can't change after creation.
+- **CPN-02** Percent discounts round half-up to the cent; no discount exceeds the subtotal.
+  Free standard shipping (CHK-03) compares the *discounted* subtotal, so a coupon can lose it.
+- **CPN-03** Quote and place-order take an optional `coupon_code`. Rejections are `422
+  coupon_rejected` with a `reason`: `invalid` (unknown or disabled - indistinguishable),
+  `not_started`, `expired`, `exhausted`, `already_used`, `min_spend` (+ `short_by_cents`).
+  Placement re-checks everything; the code is part of the Idempotency-Key fingerprint.
+- **CPN-04** A use counts while its order is alive: a cancelled or expired order gives it back.
+  Placement locks the coupon row, so two shoppers can't both take the last use.
+- **REV-01** Only a shopper with a DELIVERED order of the product may review it (refunded,
+  shipped or cancelled orders don't count). Reviews of archived products are hidden (404).
+- **REV-02** One review per product per shopper (a double submit is 409 `review_exists`);
+  rating 1-5, optional title <= 100 and text <= 2000 chars; the author shows as "First L.".
+- **REV-03** The product rating is a star total and a count, changed together with the average
+  in one relative update. Ratings collected before reviews existed (seed data) are kept.
+- **REV-04** A shopper edits or deletes their own review; staff can remove any (ADM-06).
+- **WSH-01** Signed-in only. Saving is idempotent (PUT); removing is idempotent (always 204).
+- **WSH-02** At most 50 products (409 `wishlist_full`).
+- **WSH-03** Items show today's price and stock; archived products stay listed as unavailable.
+- **WSH-04** Move to cart adds one unit under the cart rules; if the cart refuses it, the item
+  stays on the list.
+- **RET-01** A DELIVERED order can be returned until 30 days after delivery (exclusive), measured
+  from `delivered_at` on the controllable clock.
+- **RET-02** A return lists products and quantities up to what's left (ordered minus units in
+  requested, approved or received returns) with a reason and optional note.
+- **RET-03** requested -> approved -> received; staff may reject (a reason is required and
+  emailed); the shopper may cancel while requested or approved. Anything else is 409.
+- **RET-04** On receipt the refund is the returned goods' share of what was paid for goods
+  (subtotal - discount + tax), computed cumulatively over the order so split returns never
+  refund more than was paid and a full return refunds exactly that. Shipping isn't refunded.
+  Staff choose whether the goods go back in stock (ledger reason `return_restock`).
+- **RET-05** When every unit has been received back, the order becomes REFUNDED.
+- **RET-06** A full staff refund (ADM-03) refunds only what returns haven't, and is refused
+  (409 `return_in_progress`) while a return is open.
+- **EML-01** Customers are emailed when an order is placed, paid, shipped, delivered, cancelled
+  (mentioning the refund if it was paid), expired or refunded; PROCESSING sends nothing.
+- **EML-02** Every return step is emailed; a rejection includes the staff reason.
+- **EML-03** Emails are queued in the same transaction as the change (a transactional outbox):
+  a change that fails or rolls back sends nothing.
+- **ALR-01** Staff are emailed when stock *crosses* into low (<= 5) or out of stock, from a sale
+  or an adjustment - once per crossing, not on every sale while it stays low.
+- **ADM-05** Staff create coupons, see uses and state (scheduled / active / expired / exhausted /
+  disabled), change limits and window, and disable or re-enable them.
+- **ADM-06** Staff see the newest reviews and remove abusive ones.
+- **ADM-07** Staff see returns by status, approve, reject or receive them.
+
 ### Admin (ADM)
 - **ADM-01** Product/category CRUD; archive (hidden from store, kept on orders).
 - **ADM-02** Stock adjustments recorded with a reason code.
@@ -231,6 +282,10 @@ Clarifications (M7):
 - **NFR-PERF-01** Locust (Python, like the rest of the backend) replaces k6: 50 users browsing,
   filtering and searching for 2 minutes; p95 under 300 ms per endpoint and under 1% failures, or the
   nightly job fails. Warm-up requests are reported but not held to the budget.
+- **NFR-SEC-04** The built web app is served with a strict Content-Security-Policy, nosniff,
+  frame denial, referrer and permissions policies, COOP and CORP (reference list in
+  `frontend/vite.config.ts`, applied by `vite preview`); API responses carry
+  `Cross-Origin-Resource-Policy: same-origin`. Found missing by the nightly ZAP scan.
 - **NFR-TEST-01** Bug injection: `BUG_INJECTION=name,...` switches on known, realistic defects
   (catalogue in `app/core/bug_catalog.py`, each tied to the rule it breaks). `scripts/bug_hunt.py`
   switches each on in turn and fails if the tests stay green; CI runs it on every PR. Unknown names
@@ -284,4 +339,4 @@ Traceability: see [traceability.md](traceability.md).
 5. Checkout, pricing, mock payments, order state machine **(done)**
 6. Admin **(done)** - test-only product/order shortcuts retired
 7. Test hardening - contract, perf, security, bug-injection mode **(done)**
-8. Phase 2 features
+8. Phase 2 features **(done)** - coupons, reviews, wishlist, returns, order emails, low-stock alerts

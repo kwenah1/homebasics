@@ -16,4 +16,9 @@ KNOWN_BUGS: dict[str, str] = {
     "lockout_after_six": "ACC-04: account locks on the 6th failure instead of the 5th",
     "stock_not_restored_on_cancel": "ORD-01: cancelling an order doesn't return its stock",
     "idempotency_ignored": "CHK-08: place-order ignores the Idempotency-Key",
+    "coupon_per_user_limit_ignored": "CPN-03: a shopper can reuse a once-per-customer code",
+    "review_before_delivery": "REV-01: a shipped (not yet delivered) order is enough to review",
+    "refund_ignores_discount": "RET-04: a partial return refunds list price, not what was paid",
+    "return_window_off_by_one": "RET-01: a return is accepted at exactly 30 days after delivery",
+    "low_stock_alert_every_sale": "ALR-01: staff are emailed on every sale while stock is low",
 }

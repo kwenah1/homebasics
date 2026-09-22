@@ -6,7 +6,8 @@ Some products are intentionally placed on business-rule boundaries:
   * archived product             -> ADM-01 hidden from storefront
 """
 
-from decimal import Decimal
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 
 SEED_PASSWORDS = {
     "admin@homebasics.test": "Admin12345",
@@ -404,3 +405,39 @@ def seed_rating(position: int) -> tuple[Decimal | None, int]:
         return None, 0
     average = (Decimal(30 + (position * 13) % 21) / 10).quantize(Decimal("0.1"))  # 3.0..5.0
     return average, 3 + (position * 37) % 180
+
+
+def seed_rating_total(average: Decimal | None, count: int) -> int:
+    """REV-03: the star total behind a seeded average (same rounding as the migration)."""
+    if not count or average is None:
+        return 0
+    return int((average * count).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+# CPN: deterministic coupons for manual and E2E testing. Times are fixed, so tests that
+# depend on "now" use the controllable clock rather than these dates.
+COUPONS = [
+    {
+        "code": "WELCOME10",
+        "description": "10% off your first order",
+        "kind": "percent",
+        "percent_off": 10,
+        "per_user_limit": 1,
+    },
+    {
+        "code": "SAVE5",
+        "description": "$5 off orders of $30 or more",
+        "kind": "fixed",
+        "amount_off_cents": 500,
+        "min_subtotal_cents": 3000,
+        "per_user_limit": 100,
+    },
+    {
+        "code": "SPRING25",
+        "description": "25% off - spring sale (ended)",
+        "kind": "percent",
+        "percent_off": 25,
+        "starts_at": datetime(2026, 3, 1, tzinfo=UTC),
+        "expires_at": datetime(2026, 6, 1, tzinfo=UTC),
+    },
+]

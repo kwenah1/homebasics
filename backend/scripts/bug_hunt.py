@@ -41,6 +41,12 @@ TARGETS: dict[str, list[str]] = {
         T + "integration/test_admin.py",
     ],
     "idempotency_ignored": [T + "integration/test_checkout.py"],
+    # M8 (Phase 2)
+    "coupon_per_user_limit_ignored": [T + "integration/test_coupons.py"],
+    "review_before_delivery": [T + "integration/test_reviews.py"],
+    "refund_ignores_discount": [T + "unit/test_refunds.py", T + "integration/test_returns.py"],
+    "return_window_off_by_one": [T + "integration/test_returns.py"],
+    "low_stock_alert_every_sale": [T + "integration/test_notifications.py"],
 }
 
 

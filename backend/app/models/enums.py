@@ -48,3 +48,27 @@ class InventoryReason(StrEnum):
     ORDER_PLACED = "order_placed"
     ORDER_CANCELLED = "order_cancelled"
     ORDER_EXPIRED = "order_expired"
+    RETURN_RESTOCK = "return_restock"  # RET-04: returned goods back on the shelf
+
+
+class CouponKind(StrEnum):
+    PERCENT = "percent"
+    FIXED = "fixed"
+
+
+class ReturnStatus(StrEnum):
+    """RET-02: requested -> approved -> received (refunded); or rejected / cancelled."""
+
+    REQUESTED = "requested"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    RECEIVED = "received"
+
+
+class ReturnReason(StrEnum):
+    DAMAGED = "damaged"
+    WRONG_ITEM = "wrong_item"
+    NOT_AS_DESCRIBED = "not_as_described"
+    NO_LONGER_NEEDED = "no_longer_needed"
+    OTHER = "other"
