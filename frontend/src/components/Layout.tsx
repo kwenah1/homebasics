@@ -20,6 +20,11 @@ function AccountLinks() {
   }
   return (
     <>
+      {user.role === 'admin' && (
+        <Link to="/admin" data-testid="nav-admin" className="rounded bg-stone-900 px-2 py-1 text-white hover:bg-stone-700">
+          Admin
+        </Link>
+      )}
       <Link to="/orders" data-testid="nav-orders" className="hover:text-brand-700">
         Orders
       </Link>

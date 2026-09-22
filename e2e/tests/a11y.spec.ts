@@ -67,6 +67,18 @@ test.describe('accessibility (WCAG 2.1 AA) @a11y', () => {
     await expectNoViolations(page)
   })
 
+  test('back-office pages have no axe violations', async ({ page }) => {
+    const login = await page.request.post('/api/v1/auth/login', {
+      data: { email: 'admin@homebasics.test', password: 'Admin12345' },
+    })
+    expect(login.ok()).toBeTruthy()
+    for (const path of ['/admin', '/admin/products', '/admin/categories', '/admin/orders', '/admin/products/new']) {
+      await page.goto(path)
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      await expectNoViolations(page)
+    }
+  })
+
   test('account page with addresses has no axe violations', async ({
     accountPage,
     signedInUser: _,
