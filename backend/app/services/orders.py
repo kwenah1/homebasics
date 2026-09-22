@@ -39,8 +39,9 @@ from app.schemas.checkout import (
 from app.services import addresses as address_service
 from app.services import cart as cart_service
 from app.services import coupons as coupon_service
-from app.services import order_state
+from app.services import notifications, order_state
 from app.services import payments as gateway
+from app.services import returns as return_service
 from app.services.order_state import Actor
 from app.services.pricing import price_order
 
@@ -130,6 +131,9 @@ def transition(
         )
     )
     order.status = target
+    if target == OrderStatus.DELIVERED:
+        order.delivered_at = clock.now()  # RET-01: the return window starts here
+    notifications.order_status(db, order, target)
     if target in order_state.RESTOCK_ON and not (
         target == OrderStatus.CANCELLED and bugs.active("stock_not_restored_on_cancel")
     ):
@@ -334,7 +338,9 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
         # ORD-01: stock is taken at placement. Relative SQL update (stock_qty = stock_qty - n):
         # even if a stale read slipped through, the CHECK (stock_qty >= 0) would refuse an
         # oversell instead of silently writing a value computed from old data.
+        before = product.stock_qty  # fresh: the row was re-read under its lock
         product.stock_qty = Product.stock_qty - line.quantity
+        notifications.stock_changed(db, product, before, before - line.quantity)
         db.add(
             InventoryMovement(
                 product_id=product.id,
@@ -355,6 +361,7 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
             note="Order placed",
         )
     )
+    notifications.order_placed(db, order)
     db.commit()
     return order, False
 
@@ -492,6 +499,7 @@ def order_out(db: Session, order: Order) -> OrderOut:
         status=order.status,
         placed_at=order.placed_at,
         payment_expires_at=order.payment_expires_at,
+        delivered_at=order.delivered_at,
         shipping_method=order.shipping_method,
         ship_to=AddressSnapshot(
             name=order.ship_name,
@@ -539,6 +547,7 @@ def order_out(db: Session, order: Order) -> OrderOut:
         and order.payment_expires_at is not None
         and order.payment_expires_at > now,
         can_cancel=order_state.customer_can_cancel(order.status) and not _is_overdue(order),
+        return_window=return_service.window(db, order),
     )
 
 

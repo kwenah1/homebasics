@@ -17,6 +17,7 @@ from app.routers import (
     me,
     meta,
     orders,
+    returns,
     reviews,
     test_support,
     wishlist,
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(document_errors(cart.router), prefix=API_PREFIX)
     app.include_router(document_errors(orders.checkout), prefix=API_PREFIX)
     app.include_router(document_errors(orders.orders), prefix=API_PREFIX)
+    app.include_router(document_errors(returns.router), prefix=API_PREFIX)
     app.include_router(document_errors(admin.router), prefix=API_PREFIX)
     if settings.test_endpoints_active:
         app.include_router(document_errors(test_support.router), prefix=API_PREFIX)

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import require_admin
 from app.db import get_db
-from app.models import OrderStatus, User
+from app.models import OrderStatus, ReturnStatus, User
 from app.schemas.admin import (
     AdminCategoryOut,
     AdminOrderOut,
@@ -27,10 +27,12 @@ from app.schemas.admin import (
 )
 from app.schemas.common import SafeStr
 from app.schemas.coupons import CouponCreate, CouponOut, CouponUpdate
+from app.schemas.returns import AdminReturnOut, ReceiveIn, RejectIn, StaffNote
 from app.schemas.reviews import AdminReviewPage
 from app.schemas.types import PathId, QueryId
 from app.services import admin as admin_service
 from app.services import coupons as coupon_service
+from app.services import returns as return_service
 from app.services import reviews as review_service
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -189,7 +191,7 @@ def change_status(
 @router.post(
     "/orders/{order_number}/refund",
     response_model=AdminOrderOut,
-    responses={409: {"description": "Order can't be refunded in its current status"}},
+    responses={409: {"description": "Not delivered, or a return is still open"}},
 )
 def refund(
     order_number: SafeStr,
@@ -247,3 +249,50 @@ def delete_review(review_id: PathId, db: Session = Depends(get_db)):
     """Remove an abusive review; the product's rating is recalculated without it."""
     review_service.admin_delete(db, review_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Returns (ADM-07) -----------------------------------------------------------------------------
+
+_RETURN_CONFLICT = {409: {"description": "Not allowed from the return's current status"}}
+
+
+@router.get("/returns", response_model=list[AdminReturnOut])
+def list_returns(
+    status_filter: ReturnStatus | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+):
+    """Newest first; filter with ?status=requested to see what needs a decision."""
+    return return_service.admin_list(db, status_filter)
+
+
+@router.get("/returns/{return_number}", response_model=AdminReturnOut)
+def get_return(return_number: SafeStr, db: Session = Depends(get_db)):
+    return return_service.admin_get(db, return_number)
+
+
+@router.post(
+    "/returns/{return_number}/approve", response_model=AdminReturnOut, responses=_RETURN_CONFLICT
+)
+def approve_return(return_number: SafeStr, data: StaffNote, db: Session = Depends(get_db)):
+    return return_service.approve(db, return_number, data.note)
+
+
+@router.post(
+    "/returns/{return_number}/reject", response_model=AdminReturnOut, responses=_RETURN_CONFLICT
+)
+def reject_return(return_number: SafeStr, data: RejectIn, db: Session = Depends(get_db)):
+    """A reason is required - it's emailed to the shopper."""
+    return return_service.reject(db, return_number, data.note)
+
+
+@router.post(
+    "/returns/{return_number}/receive", response_model=AdminReturnOut, responses=_RETURN_CONFLICT
+)
+def receive_return(
+    return_number: SafeStr,
+    data: ReceiveIn,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Goods are back: refund their paid share and restock them if sellable (RET-04)."""
+    return return_service.receive(db, admin, return_number, data)
