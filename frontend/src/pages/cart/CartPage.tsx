@@ -225,14 +225,25 @@ export function CartPage() {
                 Fix the items marked above to continue.
               </p>
             )}
-            <button
-              type="button"
-              disabled
-              data-testid="checkout"
-              className="w-full rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Checkout (coming in Milestone 5)
-            </button>
+            {cart.has_issues ? (
+              <button
+                type="button"
+                disabled
+                data-testid="checkout"
+                className="w-full cursor-not-allowed rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white opacity-60"
+              >
+                Checkout
+              </button>
+            ) : (
+              <Link
+                // Guests sign in first; their cart merges and they land back on checkout.
+                to={mode === 'guest' ? '/login?next=%2Fcheckout' : '/checkout'}
+                data-testid="checkout"
+                className="block w-full rounded-lg bg-brand-700 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-brand-900"
+              >
+                {mode === 'guest' ? 'Sign in to check out' : 'Checkout'}
+              </Link>
+            )}
             {mode === 'guest' && (
               <p className="text-xs text-stone-600" data-testid="guest-hint">
                 <Link to="/login?next=%2Fcart" className="underline">

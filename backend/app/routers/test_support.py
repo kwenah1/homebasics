@@ -3,11 +3,14 @@
 Mounted only when settings.test_endpoints_active (never in prod).
 """
 
+import time
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
+from psycopg.errors import DeadlockDetected, LockNotAvailable
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core import clock
@@ -28,9 +31,23 @@ class ResetResponse(BaseModel):
 
 @router.post("/reset", response_model=ResetResponse)
 def reset_database(db: Session = Depends(get_db)) -> ResetResponse:
-    """Wipe every table, reload the deterministic seed data and reset the clock."""
+    """Wipe every table, reload the deterministic seed data and reset the clock.
+
+    TRUNCATE takes exclusive locks table by table, so it can deadlock with a request still
+    in flight from the previous test's open page (found by E2E: the expiry sweep holds an
+    orders lock and wants products). Postgres aborts one side; the reset is all-or-nothing,
+    so retrying it is safe.
+    """
     clock.reset()
-    return ResetResponse(reset=True, seeded=reset_and_seed(db))
+    for attempt in range(1, 4):
+        try:
+            return ResetResponse(reset=True, seeded=reset_and_seed(db))
+        except DBAPIError as exc:
+            db.rollback()
+            if attempt == 3 or not isinstance(exc.orig, DeadlockDetected | LockNotAvailable):
+                raise
+            time.sleep(0.2 * attempt)
+    raise AssertionError("unreachable")
 
 
 # --- Email outbox -----------------------------------------------------------------------

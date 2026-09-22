@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15  # ACC-03
     refresh_token_days: int = 7  # ACC-03
     refresh_cookie_name: str = "hb_refresh"
+    # ACC-03b: a just-rotated refresh token presented again within this window is treated as a
+    # benign race (navigation aborted the response, two tabs refreshing) - not as theft.
+    refresh_reuse_grace_seconds: int = 30
     lockout_threshold: int = 5  # ACC-04
     lockout_minutes: int = 15  # ACC-04
     reset_token_minutes: int = 30  # ACC-06

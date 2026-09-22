@@ -16,6 +16,11 @@ export function dollarsToCents(input: string | null | undefined): number | undef
   return Number(whole) * 100 + Number(fraction.padEnd(2, '0'))
 }
 
+/** 0.0825 -> "8.25%", 0.06 -> "6%", 0.06875 -> "6.875%" (never rounds a real rate). */
+export function formatRate(rate: number): string {
+  return `${(rate * 100).toFixed(3).replace(/\.?0+$/, '')}%`
+}
+
 export function centsToDollarInput(cents: number | undefined): string {
   if (cents === undefined) return ''
   return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2)

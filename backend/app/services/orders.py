@@ -139,10 +139,14 @@ def _restock(db: Session, order: Order, reason: InventoryReason) -> None:
             .where(Product.id.in_([i.product_id for i in items]))
             .order_by(Product.id)
             .with_for_update()
+            # Regression (found by the E2E last-unit race): without this, rows already in the
+            # session (loaded with the cart) kept their stale stock after we waited for the
+            # lock - so two shoppers both bought the last unit. The lock must re-read the row.
+            .execution_options(populate_existing=True)
         )
     }
     for item in items:
-        products[item.product_id].stock_qty += item.quantity
+        products[item.product_id].stock_qty = Product.stock_qty + item.quantity
         db.add(
             InventoryMovement(
                 product_id=item.product_id, delta=item.quantity, reason=reason, order_id=order.id
@@ -161,9 +165,15 @@ def _is_overdue(order: Order) -> bool:
 def expire_overdue(db: Session) -> int:
     """ORD-01: unpaid orders past their 30-minute window expire and release their stock.
 
-    Runs at the start of checkout and order endpoints (and via /test/expire-orders); a
-    production deployment would also run it on a schedule. SKIP LOCKED lets concurrent
-    sweeps share the work instead of queueing behind each other.
+    Runs before catalog, cart, checkout and order requests (and via /test/expire-orders); a
+    production deployment would also run it on a schedule.
+
+    Regression (found by E2E, 1 run in 4): this used SKIP LOCKED, so when one page fired
+    several requests at once, a sweep that skipped the row another sweep was expiring went
+    on to read stock *before* that sweep committed - and showed 'Out of stock' for an item
+    that was back on sale. Waiting instead is consistent: after the lock is released,
+    Postgres re-checks the WHERE clause, the row is no longer pending and is skipped, and the
+    stock read that follows sees the committed restock.
     """
     overdue = db.scalars(
         select(Order)
@@ -172,7 +182,8 @@ def expire_overdue(db: Session) -> int:
             Order.payment_expires_at <= clock.now(),
         )
         .options(selectinload(Order.items))
-        .with_for_update(skip_locked=True, of=Order)
+        .with_for_update(of=Order)
+        .execution_options(populate_existing=True)  # locked rows must be re-read
     ).all()
     for order in overdue:
         transition(db, order, OrderStatus.EXPIRED, Actor.SYSTEM, note="Payment window closed")
@@ -221,6 +232,10 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
             .where(Product.id.in_([line.product_id for line in lines]))
             .order_by(Product.id)
             .with_for_update()
+            # Regression (found by the E2E last-unit race): without this, rows already in the
+            # session (loaded with the cart) kept their stale stock after we waited for the
+            # lock - so two shoppers both bought the last unit. The lock must re-read the row.
+            .execution_options(populate_existing=True)
         )
     }
     problems = []
@@ -300,7 +315,10 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
                 line_total_cents=product.price_cents * line.quantity,
             )
         )
-        product.stock_qty -= line.quantity  # ORD-01: stock is taken at placement
+        # ORD-01: stock is taken at placement. Relative SQL update (stock_qty = stock_qty - n):
+        # even if a stale read slipped through, the CHECK (stock_qty >= 0) would refuse an
+        # oversell instead of silently writing a value computed from old data.
+        product.stock_qty = Product.stock_qty - line.quantity
         db.add(
             InventoryMovement(
                 product_id=product.id,
@@ -334,6 +352,7 @@ def _owned_order_for_update(db: Session, user: User, number: str) -> Order:
         .where(Order.order_number == number, Order.user_id == user.id)
         .options(selectinload(Order.items))
         .with_for_update(of=Order)
+        .execution_options(populate_existing=True)  # locked rows must be re-read
     )
     if order is None:  # someone else's order looks exactly like a missing one
         raise AppError(404, "order_not_found", "Order not found.")

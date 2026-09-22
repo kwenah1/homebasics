@@ -2,7 +2,7 @@
 
 Regression (found by an integration test): the sweep used to run only at checkout, so stock
 held by abandoned orders stayed invisible in the catalog and cart - the next shopper couldn't
-even add the item. The query is cheap (index on status + payment_expires_at, SKIP LOCKED).
+even add the item. The query is cheap (index on status + payment_expires_at).
 A production deployment would also run it on a schedule.
 """
 

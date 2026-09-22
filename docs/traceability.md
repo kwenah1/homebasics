@@ -50,15 +50,24 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | CRT-04 / 04a | No reservation: lines re-validated; flagged lines excluded from subtotal; checkout blocked | `test_cart_rules.py::test_line_issue`, `test_cart.py::TestNoReservation`, `CartPage.test.tsx`, `isolated/cart-changes.spec.ts` | U I F E | Covered |
 | CRT-05 | Free-shipping estimate at the $49.99/$50.00 boundary | `test_cart_rules.py::test_amount_to_free_shipping`, `test_cart.py::TestFreeShippingEstimate`, `CartPage.test.tsx`, `cart.spec.ts` | U I F E | Covered |
 | CRT-06 | Concurrent requests serialised (row lock) | `e2e/tests/api/cart.spec.ts::concurrent adds...` (6 parallel adds -> five 200s, one 409, qty 10) | A | Covered |
+## Checkout & orders (Milestone 5)
+
+| Req | Description | Tests | Layers | Status |
+|---|---|---|---|---|
+| CHK-01 / 01a / 02 / 05 / 05a | Calculation order; tax by ship-to state, once, half-up, never on shipping; integer cents | `tests/unit/test_pricing.py` (worked examples, half-up cases, once-per-order, property test incl. the DB identity), `tests/integration/test_checkout.py::TestQuote`, DB check `ck_orders_total_adds_up`, `Checkout.test.tsx`, `e2e/tests/checkout.spec.ts` (TX $0.82 on $9.98; OR 0%) | U I F E | Covered |
+| CHK-03 | Standard free at >= $50 after discount, else $5.99; express $14.99 | `test_pricing.py::test_shipping_boundaries`, `test_free_shipping_uses_the_discounted_subtotal`, `TestQuote::test_free_shipping_boundary`, `checkout.spec.ts` ($49.90 vs over $50, express) | U I E | Covered |
+| CHK-04 / 04a | Stock re-checked under lock at placement; per-line refusal; last unit sold once | `TestPlaceOrder::test_stock_changed_since_adding_lists_every_problem_line`, `Checkout.test.tsx`, `e2e/tests/isolated/checkout-state.spec.ts::two shoppers race for the last unit` | I F E | Covered |
+| CHK-06 | Order snapshots price, name, SKU, address | `TestPlaceOrder::test_snapshot_survives_later_price_and_address_changes` | I | Covered |
+| CHK-07 / 07a | Mock gateway: 3 test cards, others refused, Luhn, expiry, last4 only, 402 decline stays payable | `tests/unit/test_payments_and_states.py`, `TestPay`, `card.test.ts`, `PayAndOrders.test.tsx`, `checkout.spec.ts` (decline -> insufficient -> success), `api/checkout.spec.ts` (PAN never in any response, 402) | U I F E A | Covered |
+| CHK-08 / 08a | Idempotent place-order and pay; key reuse with a different body refused; client keeps/renews keys correctly | `TestPlaceOrder::test_idempotent_replay...`, `TestPay::test_replay_never_charges_twice`, `card.test.ts::shouldKeepKey`, `Checkout.test.tsx` (network retry same key, 409 new key), `api/checkout.spec.ts` (3 simultaneous calls -> 1 order / 1 payment) | U I F A | Covered |
+| CHK-09 | Expected total required; changed total refused | `TestPlaceOrder::test_total_changed_since_the_quote`, `Checkout.test.tsx`, `isolated/checkout-state.spec.ts::price changed after the quote` | I F E | Covered |
+| ORD-01 / 01a | Stock taken at placement, returned on cancel/expiry; 30-min window; sweep before stock reads | `TestExpiry` (frozen clock, 29:59 vs 30:00), `TestCancel`, `isolated/checkout-state.spec.ts` (unpaid order expires, item back on sale; pay after window) | I E | Covered |
+| ORD-02 / 02a | State machine: exact allowed (from, to, who) set; 409 otherwise | `test_payments_and_states.py::TestStateMachine::test_every_combination` (all 192 cases), `TestLifecycleAndHistory`, `TestCancel::test_cancel_until_shipped`, `checkout.spec.ts::shipped orders can no longer be cancelled` | U I E | Covered |
+| ORD-03 | Every transition audited (from, to, who, note) | `TestLifecycleAndHistory::test_full_happy_path_is_audited`, `PayAndOrders.test.tsx` | I F | Covered |
 ## Later milestones
 
 | Req | Description | Tests | Status |
 |---|---|---|---|
-| CHK-01..02 | Calculation order, tax | `test_seed_data.py::test_tax_table_covers_50_states_plus_dc`, `test_meta.py` | Partial (data) |
-| CHK-03 | Free shipping >= $50 | `test_seed_data.py::test_boundary_values_present_for_free_shipping`, `routing.test.tsx` (copy) | Partial |
-| CHK-05 | Integer cents, totals add up | `test_schema.py::test_order_total_must_add_up` | Partial (DB level) |
-| CHK-04, 06..08 | Stock re-check, snapshot, mock pay, idempotency | - | Planned M5 |
-| ORD-01..03 | State machine, restock, audit | `test_schema.py::test_valid_order_is_accepted_with_pending_status` | Partial |
 | ADM-02..03 | Inventory, order admin | - | Planned M6 |
 
 ## Non-functional
@@ -95,3 +104,17 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | 9 | E2E (isolated price-change test) | Clicking Add while the session was still being restored put the item in the **guest** cart; it merged into the account on a later page load | Add is disabled until the session is known; the cart refuses to guess: `ProductDetailPage.test.tsx::Add waits until the session is known` |
 | 10 | Same E2E test | A price change before sign-in went unflagged: merged lines recorded today's price, not the one the guest saw (CRT-03) | Merge records `price_cents_seen` for new lines (notice only, never charged): `test_cart.py::test_price_the_guest_saw_survives_sign_in` |
 | 11 | Frontend unit test | Test-design defect: the fake `GET /cart` always returned an empty cart, so the refetch after a merge "lost" the items | Stateful fake API: `frontend/src/test/cartFixtures.ts::accountCartServer` |
+
+## Defects found by the suites during Milestone 5
+
+| # | Found by | Defect | Fix + regression test |
+|---|---|---|---|
+| 12 | **E2E last-unit race** (isolated, API) | **Oversell:** two shoppers could both buy the last unit. `SELECT ... FOR UPDATE` waited for the other checkout's lock, but SQLAlchemy returned the product objects already cached in the session (loaded with the cart) *without refreshing them*, so stale stock passed the check and an absolute value was written. | `populate_existing=True` on every locking query, and stock changes are now relative SQL (`stock_qty = stock_qty - n`) so `CHECK (stock_qty >= 0)` catches any future stale read: `isolated/checkout-state.spec.ts::two shoppers race...` (was 2/6, now 10/10) |
+| 13 | Integration test | Expired orders' stock stayed invisible until someone checked out; the next shopper couldn't even add the item | Sweep runs before catalog, cart and checkout requests: `TestExpiry::test_expired_stock_is_available_to_the_next_shopper`, `isolated/checkout-state.spec.ts` (item back on sale) |
+| 14 | E2E guest checkout | Checkout quoted the cart *before* the sign-in merge finished (empty cart) and never re-quoted | Quote waits for the cart and is keyed on its contents: `Checkout.test.tsx::waits for the sign-in cart merge before quoting` |
+| 15 | Frontend unit test | After paying, the "already paid" redirect fired first and dropped the "Thank you" confirmation | `justPaid` redirect with `?paid=1`: `PayAndOrders.test.tsx::pays and lands on the confirmed order` |
+| 16 | Integration test (test design) | "Valid 1 second before the deadline" tests were flaky: real DB latency was added on top of `travel()` | `frozen_clock` fixture; applied to every boundary test (M2 ones too) |
+| 17 | E2E (test design) | Test moved an order to "processing" before the pay click had finished | Wait for "Paid" before calling the API: `checkout.spec.ts::shipped orders can no longer be cancelled` |
+| 18 | E2E (isolated, intermittent) | **Shoppers signed out at random:** navigating while a silent refresh was in flight lost the rotated cookie; the next page replayed the old token and theft detection revoked the session | 30-second reuse grace for *just-rotated* tokens of a still-alive family (a logout, a password change or a real theft still revokes): `test_auth_sessions.py::test_rotated_token_reused_within_grace_is_a_benign_race`, `test_grace_never_survives_a_password_change`, `test_logged_out_token_gets_no_grace` |
+| 19 | E2E (isolated, intermittent) | Test-only reset deadlocked with a request still in flight from the previous test's page | Reset retries on deadlock/lock timeout (it is all-or-nothing) |
+| 20 | E2E (isolated, 1 run in 4) | Expiry sweep used `SKIP LOCKED`: a request skipped the order another sweep was expiring and read stock before that commit, showing "Out of stock" for an item back on sale | Sweep waits for the lock (Postgres re-checks the row and skips it; the next read sees the restock): `isolated/checkout-state.spec.ts::unpaid order expires...` |

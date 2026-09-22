@@ -51,6 +51,22 @@ test.describe('accessibility (WCAG 2.1 AA) @a11y', () => {
     await expectNoViolations(page)
   })
 
+  test('checkout, pay and order pages have no axe violations', async ({ page, shopper: _ }) => {
+    await addFromProductPage(page, 'all-purpose-cleaner-spray-32oz', 1)
+    await page.goto('/checkout')
+    await expect(page.getByTestId('summary-total')).toBeVisible()
+    await expectNoViolations(page)
+
+    await page.getByTestId('place-order').click()
+    await expect(page.getByTestId('pay-submit')).toBeVisible()
+    await expectNoViolations(page)
+
+    await page.getByTestId('use-card-4242').click()
+    await page.getByTestId('pay-submit').click()
+    await expect(page.getByTestId('order-status')).toHaveText('Paid')
+    await expectNoViolations(page)
+  })
+
   test('account page with addresses has no axe violations', async ({
     accountPage,
     signedInUser: _,

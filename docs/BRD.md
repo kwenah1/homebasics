@@ -45,6 +45,10 @@ built as a realistic system-under-test for SDET practice across every testing la
   `httpOnly`, `SameSite=Strict` cookie scoped to `/api/v1/auth`, and it rotates on every use.
   Replaying an already-rotated refresh token revokes that whole login "family" (theft
   detection).
+- **ACC-03b** A just-rotated refresh token presented again within 30 s (the navigation aborted the
+  response, or two tabs refreshed together) gets a new token in the same family instead of
+  triggering theft detection. This applies only while the family is alive: a logout, a password change or
+  reset, or a detected theft still ends the session. After 30 s, reuse revokes the family.
 - **ACC-04a** Failures 1-4 return 401 `invalid_credentials`. The **5th** failure returns 423
   `account_locked` with `Retry-After`. While locked, even the correct password gets 423. When the lock
   expires the counter restarts at 0, and a successful login also resets it.
@@ -122,6 +126,32 @@ built as a realistic system-under-test for SDET practice across every testing la
 - **CHK-07** Mock gateway: `4242 4242 4242 4242` succeeds; `4000 0000 0000 0002` declined;
   `4000 0000 0000 9995` insufficient funds.
 - **CHK-08** Payments carry an idempotency key; a double-submit never double-charges.
+
+#### Checkout rules clarified during Milestone 5
+- **CHK-01a** Checkout ships to a saved address (address book, ACC-05). The tax rate is the ship-to
+  state's rate. The quote endpoint prices the account cart without changing anything.
+- **CHK-05a** Tax = round-half-up(discounted subtotal × rate), computed **once on the order**
+  (not per line). Example: 3 × $0.10 at 5% is $0.02, not $0.03.
+- **CHK-04a** Place order locks the products **in product-id order** (so there are no deadlocks)
+  and re-checks every line. It returns 409 `cart_has_issues` listing *each* problem line (`issue`,
+  `requested`, `available`).
+- **CHK-08a** `POST /checkout/place-order` and `POST /orders/{no}/pay` require an
+  `Idempotency-Key` header (8-48 chars, scoped per shopper). Repeating a key returns the original
+  outcome (header `Idempotent-Replayed: true`) and never acts twice. Reusing a key with a different
+  request returns 422 `idempotency_key_reused`. Clients keep the key when they got no answer or a 5xx,
+  and make a new one after a definitive 4xx.
+- **CHK-09** Place order requires the `expected_total_cents` the shopper saw. If the total changed
+  (a price or stock change), it returns 409 `total_changed` and places nothing, so a shopper is never
+  charged a total they didn't see.
+- **CHK-07a** The mock gateway refuses all non-test cards (`test_cards_only`). It checks Luhn and
+  expiry (valid through the end of the month, judged by the app clock). Only the last 4 digits are
+  stored or returned. A decline returns HTTP 402, the order stays payable, and a retry uses a new key.
+- **ORD-01a** Expiry is enforced by a sweep that runs before every catalog, cart, checkout and
+  order request (plus `/test/expire-orders`), so stock from abandoned orders is visible again
+  right away. A production deployment would also schedule it.
+- **ORD-02a** Who may move an order: customer = cancel (before shipped); system = paid,
+  expired; admin = processing, shipped, delivered, refunded, cancel. Cancelling a paid order
+  records a `refunded` payment.
 
 ### Orders (ORD)
 
@@ -207,7 +237,7 @@ Traceability: see [traceability.md](traceability.md).
 2. Accounts & auth **(done)** - rate limiting on auth endpoints deferred to M7 (NFR-SEC)
 3. Catalog & search **(done)** - performance budget (NFR-PERF) measured with k6 in M7
 4. Cart & guest-merge **(done)**
-5. Checkout, pricing, mock payments, order state machine
+5. Checkout, pricing, mock payments, order state machine **(done)**
 6. Admin
 7. Test hardening - contract, perf, security, bug-injection mode
 8. Phase 2 features
