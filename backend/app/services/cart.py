@@ -117,7 +117,7 @@ def combine_guest_items(items: list[GuestItem]) -> "OrderedDict[int, tuple[int, 
 # --- Persistence ------------------------------------------------------------------------------
 
 
-def _locked_cart(db: Session, user: User) -> Cart:
+def lock_cart(db: Session, user: User) -> Cart:
     """Get-or-create the user's cart and lock it, so concurrent requests for the same user
     (double-clicked Add, two tabs) are applied one after another instead of colliding."""
     db.execute(
@@ -126,7 +126,7 @@ def _locked_cart(db: Session, user: User) -> Cart:
     return db.scalar(select(Cart).where(Cart.user_id == user.id).with_for_update())
 
 
-def _lines(db: Session, cart_id: int) -> list[CartItem]:
+def cart_lines(db: Session, cart_id: int) -> list[CartItem]:
     return list(
         db.scalars(
             select(CartItem)
@@ -139,7 +139,7 @@ def _lines(db: Session, cart_id: int) -> list[CartItem]:
 
 def _view(db: Session, cart_id: int) -> CartOut:
     return price_lines(
-        [Line(i.product, i.quantity, i.price_cents_when_added) for i in _lines(db, cart_id)]
+        [Line(i.product, i.quantity, i.price_cents_when_added) for i in cart_lines(db, cart_id)]
     )
 
 
@@ -165,7 +165,7 @@ def add_item(db: Session, user: User, product_id: int, quantity: int) -> CartOut
     product = _visible_product(db, product_id)
     if product.stock_qty <= 0:
         raise AppError(409, "out_of_stock", "This item is out of stock.")
-    cart = _locked_cart(db, user)
+    cart = lock_cart(db, user)
     line = _line(db, cart.id, product_id)
     in_cart = line.quantity if line else 0
     limit = line_limit(product.stock_qty)
@@ -192,7 +192,7 @@ def add_item(db: Session, user: User, product_id: int, quantity: int) -> CartOut
 
 
 def set_quantity(db: Session, user: User, product_id: int, quantity: int) -> CartOut:
-    cart = _locked_cart(db, user)
+    cart = lock_cart(db, user)
     line = _line(db, cart.id, product_id)
     if line is None:
         raise AppError(404, "not_in_cart", "That item isn't in your cart.")
@@ -212,7 +212,7 @@ def set_quantity(db: Session, user: User, product_id: int, quantity: int) -> Car
 
 
 def remove_item(db: Session, user: User, product_id: int) -> CartOut:
-    cart = _locked_cart(db, user)
+    cart = lock_cart(db, user)
     line = _line(db, cart.id, product_id)
     if line is None:
         raise AppError(404, "not_in_cart", "That item isn't in your cart.")
@@ -222,15 +222,15 @@ def remove_item(db: Session, user: User, product_id: int) -> CartOut:
 
 
 def clear(db: Session, user: User) -> None:
-    cart = _locked_cart(db, user)
+    cart = lock_cart(db, user)
     db.execute(delete(CartItem).where(CartItem.cart_id == cart.id))
     db.commit()
 
 
 def acknowledge_prices(db: Session, user: User) -> CartOut:
     """CRT-03: the shopper has seen the new prices; stop flagging them."""
-    cart = _locked_cart(db, user)
-    for line in _lines(db, cart.id):
+    cart = lock_cart(db, user)
+    for line in cart_lines(db, cart.id):
         line.price_cents_when_added = line.product.price_cents
     db.commit()
     return _view(db, cart.id)
@@ -258,7 +258,7 @@ def preview(db: Session, items: list[GuestItem]) -> CartOut:
 
 def merge(db: Session, user: User, items: list[GuestItem]) -> MergeOut:
     """CRT-02: fold a guest cart into the account cart at sign-in."""
-    cart = _locked_cart(db, user)
+    cart = lock_cart(db, user)
     capped: list[CappedLine] = []
     skipped: list[SkippedLine] = []
 

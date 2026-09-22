@@ -38,12 +38,12 @@ class TestAccessTokens:
         assert (claims.user_id, claims.role) == (42, "customer")
         assert lifetime == 15 * 60
 
-    def test_valid_one_second_before_expiry(self):
+    def test_valid_one_second_before_expiry(self, frozen_clock):
         token, _ = create_access_token(1, "customer")
         clock.advance(timedelta(minutes=15) - timedelta(seconds=1))
         assert decode_access_token(token).user_id == 1
 
-    def test_expired_at_fifteen_minutes(self):
+    def test_expired_at_fifteen_minutes(self, frozen_clock):
         token, _ = create_access_token(1, "customer")
         clock.advance(timedelta(minutes=15))
         with pytest.raises(AppError) as exc:

@@ -45,6 +45,8 @@ def _order(user_id: int, **money) -> Order:
     return Order(
         order_number="HB-TEST-1",
         user_id=user_id,
+        idempotency_key="schema-test-key",
+        request_hash="0" * 64,
         shipping_method=ShippingMethod.STANDARD,
         ship_name="Casey",
         ship_line1="1 Main St",

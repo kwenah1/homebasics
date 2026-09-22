@@ -3,11 +3,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.sweep import release_expired_stock
 from app.db import get_db
 from app.schemas.catalog import CategoryOut, ProductDetail, ProductPage, ProductQuery
 from app.services import catalog as catalog_service
 
-router = APIRouter(tags=["catalog"])
+router = APIRouter(tags=["catalog"], dependencies=[Depends(release_expired_stock)])
 
 
 @router.get("/categories", response_model=list[CategoryOut])

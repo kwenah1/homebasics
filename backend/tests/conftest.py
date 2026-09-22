@@ -39,6 +39,20 @@ def _reset_clock():
     clock.reset()
 
 
+@pytest.fixture
+def frozen_clock():
+    """Stop time so only explicit travel() moves it.
+
+    Required for "still valid 1 second before the deadline" tests: with a live clock, the
+    real seconds spent on (network) DB round-trips are added on top of the travel, and the
+    boundary test turns flaky. Request this fixture *before* any fixture that creates the
+    thing being timed.
+    """
+    clock.freeze()
+    yield
+    clock.reset()
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Tests under tests/integration are auto-marked and skipped when no DB is configured."""
     skip = pytest.mark.skip(reason="TEST_DATABASE_URL not set")

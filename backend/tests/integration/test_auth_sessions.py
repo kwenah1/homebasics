@@ -84,12 +84,16 @@ class TestRefresh:
         assert error_code(response) == "refresh_token_expired"
         assert "hb_refresh" not in client.cookies  # cleared on failure
 
-    def test_reusing_a_rotated_token_revokes_the_whole_family(self, client, make_user):
-        """Theft detection: attacker replays an old token -> both parties are signed out."""
+    def test_reusing_a_rotated_token_revokes_the_whole_family(
+        self, frozen_clock, client, make_user
+    ):
+        """Theft detection: an old token replayed after the grace window -> both parties are
+        signed out."""
         _, _, stolen = sign_in(client, make_user)
         assert client.post(REFRESH).status_code == 200  # legit user rotates
         current = client.cookies.get("hb_refresh")
 
+        travel(seconds=31)  # past the 30 s reuse grace
         use_refresh(client, stolen)
         replay = client.post(REFRESH)
         assert replay.status_code == 401
@@ -98,7 +102,47 @@ class TestRefresh:
         use_refresh(client, current)
         assert error_code(client.post(REFRESH)) == "refresh_token_reused"
 
-    def test_other_logins_unaffected_by_family_revocation(self, client, make_user):
+    def test_rotated_token_reused_within_grace_is_a_benign_race(
+        self, frozen_clock, client, make_user
+    ):
+        """Regression (found by E2E): navigating while a refresh was in flight lost the new
+        cookie; the next page's refresh used the old token and the shopper was signed out."""
+        _, _, old = sign_in(client, make_user)
+        assert client.post(REFRESH).status_code == 200  # response "lost" by the browser
+        successor = client.cookies.get("hb_refresh")
+
+        travel(seconds=30)  # boundary: still inside the grace window
+        use_refresh(client, old)
+        retry = client.post(REFRESH)
+        assert retry.status_code == 200
+        assert client.cookies.get("hb_refresh") not in (old, successor)
+
+        use_refresh(client, successor)  # the other copy (e.g. another tab) still works
+        assert client.post(REFRESH).status_code == 200
+
+    def test_grace_never_survives_a_password_change(self, frozen_clock, client, make_user):
+        """Security: the grace window must not let a pre-change token back in."""
+        user, pw = make_user()
+        client.post(LOGIN, json={"email": user.email, "password": pw})
+        old = client.cookies.get("hb_refresh")
+        client.post(REFRESH)  # rotate: `old` is now within its grace window
+        token = client.post(REFRESH).json()["access_token"]
+        client.post(
+            "/api/v1/me/password",
+            json={"current_password": pw, "new_password": "Brandnew99"},
+            headers={"Authorization": f"Bearer {token}"},
+        )  # revokes every session
+
+        use_refresh(client, old)
+        assert client.post(REFRESH).status_code == 401
+
+    def test_logged_out_token_gets_no_grace(self, frozen_clock, client, make_user):
+        _, _, raw = sign_in(client, make_user)
+        client.post(LOGOUT)
+        use_refresh(client, raw)
+        assert client.post(REFRESH).status_code == 401  # revoked by logout, not rotation
+
+    def test_other_logins_unaffected_by_family_revocation(self, frozen_clock, client, make_user):
         user, pw = make_user()
         client.post(LOGIN, json={"email": user.email, "password": pw})
         device_a = client.cookies.get("hb_refresh")
@@ -108,8 +152,9 @@ class TestRefresh:
 
         use_refresh(client, device_a)
         client.post(REFRESH)
+        travel(seconds=31)
         use_refresh(client, device_a)
-        client.post(REFRESH)  # replay -> device A family revoked
+        client.post(REFRESH)  # replay after the grace window -> device A family revoked
 
         use_refresh(client, device_b)
         assert client.post(REFRESH).status_code == 200

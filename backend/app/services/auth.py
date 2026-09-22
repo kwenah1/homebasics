@@ -126,6 +126,28 @@ def rotate_refresh_token(db: Session, raw: str | None) -> tuple[User, str]:
 
     now = clock.now()
     if row.revoked_at is not None:
+        grace = timedelta(seconds=get_settings().refresh_reuse_grace_seconds)
+        rotated_moments_ago = row.replaced_by_id is not None and now - row.revoked_at <= grace
+        # The family must still be alive: a password change/reset or a detected theft revokes
+        # every token in it, and the grace must never undo that.
+        family_alive = db.scalar(
+            select(RefreshToken.id)
+            .where(
+                RefreshToken.family_id == row.family_id,
+                RefreshToken.revoked_at.is_(None),
+                RefreshToken.expires_at > now,
+            )
+            .limit(1)
+        )
+        if rotated_moments_ago and family_alive is not None and row.expires_at > now:
+            # Regression (found by E2E): the browser navigated away while a refresh was in
+            # flight - the server rotated the token but the new cookie never arrived, so the
+            # next page presented the old one and was signed out as a "thief". Within the grace
+            # window, issue another token in the same family instead.
+            user = db.get(User, row.user_id)
+            new_raw, _ = issue_refresh_token(db, row.user_id, row.family_id)
+            db.commit()
+            return user, new_raw
         revoke_family(db, row.family_id)
         db.commit()
         raise AppError(401, "refresh_token_reused", "Session ended for your security.")

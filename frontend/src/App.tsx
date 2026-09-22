@@ -11,7 +11,10 @@ import { CartPage } from './pages/cart/CartPage'
 import { ProductDetailPage } from './pages/catalog/ProductDetailPage'
 import { ProductListPage } from './pages/catalog/ProductListPage'
 import { HomePage } from './pages/HomePage'
+import { CheckoutPage } from './pages/checkout/CheckoutPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { OrderDetailPage, OrdersPage } from './pages/orders/OrderPages'
+import { PayPage } from './pages/orders/PayPage'
 
 export function AppRoutes() {
   return (
@@ -28,6 +31,10 @@ export function AppRoutes() {
         <Route path="cart" element={<CartPage />} />
         <Route element={<RequireAuth />}>
           <Route path="account" element={<AccountPage />} />
+          <Route path="checkout" element={<CheckoutPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="orders/:orderNumber" element={<OrderDetailPage />} />
+          <Route path="orders/:orderNumber/pay" element={<PayPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

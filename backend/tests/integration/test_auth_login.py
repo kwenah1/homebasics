@@ -64,7 +64,7 @@ class TestLockout:
         assert locked.headers["Retry-After"] == "900"
         assert locked.json()["error"]["retry_after_seconds"] == 900
 
-    def test_correct_password_rejected_while_locked(self, client, make_user):
+    def test_correct_password_rejected_while_locked(self, frozen_clock, client, make_user):
         user, pw = make_user()
         self.fail(client, user.email, 5)
         travel(minutes=14, seconds=59)
@@ -73,7 +73,7 @@ class TestLockout:
         assert response.status_code == 423
         assert response.json()["error"]["retry_after_seconds"] == 1
 
-    def test_unlocks_after_fifteen_minutes(self, client, make_user):
+    def test_unlocks_after_fifteen_minutes(self, frozen_clock, client, make_user):
         user, pw = make_user()
         self.fail(client, user.email, 5)
         travel(minutes=15)

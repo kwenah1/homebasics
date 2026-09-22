@@ -86,6 +86,37 @@ export class Api {
     if (!response.ok()) throw new Error(`add to cart failed: ${await response.text()}`)
   }
 
+  async addAddress(
+    user: TestUser,
+    overrides: Partial<{ label: string; state: string; city: string; postal_code: string }> = {},
+  ): Promise<number> {
+    const response = await this.request.post(`${API_URL}/api/v1/me/addresses`, {
+      headers: await this.authHeader(user),
+      data: {
+        label: 'Home',
+        recipient_name: `${user.firstName} ${user.lastName}`,
+        line1: '100 Congress Ave',
+        city: 'Austin',
+        state: 'TX',
+        postal_code: '78701',
+        ...overrides,
+      },
+    })
+    if (response.status() !== 201) throw new Error(`add address failed: ${await response.text()}`)
+    return (await response.json()).id
+  }
+
+  async expireOrdersNow() {
+    return (await this.request.post(`${API_URL}/api/v1/test/expire-orders`)).json()
+  }
+
+  async setOrderStatus(orderNumber: string, to: string) {
+    const response = await this.request.post(`${API_URL}/api/v1/test/orders/${orderNumber}/status`, {
+      data: { to },
+    })
+    if (!response.ok()) throw new Error(`status change failed: ${await response.text()}`)
+  }
+
   /** Test-only: change a product's price / stock / archived flag. Global state! */
   async changeProduct(
     sku: string,

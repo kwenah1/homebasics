@@ -20,6 +20,9 @@ function AccountLinks() {
   }
   return (
     <>
+      <Link to="/orders" data-testid="nav-orders" className="hover:text-brand-700">
+        Orders
+      </Link>
       <Link to="/account" data-testid="nav-account" className="hover:text-brand-700">
         Hi, <span data-testid="nav-user-name">{user.first_name}</span>
       </Link>
