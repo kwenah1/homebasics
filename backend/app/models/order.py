@@ -5,10 +5,12 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -37,11 +39,18 @@ class Order(TimestampMixin, Base):
             name="total_adds_up",
         ),
         CheckConstraint("total_cents >= 0", name="total_non_negative"),
+        # CHK-08: one order per (shopper, Idempotency-Key) - a double submit can't make two.
+        UniqueConstraint("user_id", "idempotency_key", name="uq_orders_user_idempotency_key"),
+        # ORD-01: the expiry sweep looks for overdue unpaid orders.
+        Index("ix_orders_status_payment_expires_at", "status", "payment_expires_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     order_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Fingerprint of the request body: replaying a key with a *different* request is refused.
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[OrderStatus] = mapped_column(
         _enum(OrderStatus), default=OrderStatus.PENDING_PAYMENT, index=True, nullable=False
     )
@@ -108,6 +117,7 @@ class Payment(Base):
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True, nullable=False)
     # CHK-08: a repeated submit with the same key returns the original result.
     idempotency_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    request_hash: Mapped[str | None] = mapped_column(String(64))
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[PaymentStatus] = mapped_column(_enum(PaymentStatus), nullable=False)
     card_last4: Mapped[str] = mapped_column(String(4), nullable=False)

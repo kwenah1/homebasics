@@ -12,6 +12,14 @@ def travel(**kwargs) -> None:
     clock.advance(timedelta(**kwargs))
 
 
+def refresh_session(client) -> None:
+    """After time travel the 15-minute access token has expired; the browser refreshes
+    silently, and tests do the same with the refresh cookie."""
+    response = client.post("/api/v1/auth/refresh")
+    assert response.status_code == 200, response.text
+    client.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
+
+
 def use_refresh(client, raw: str) -> None:
     """Simulate a device holding this refresh token.
 

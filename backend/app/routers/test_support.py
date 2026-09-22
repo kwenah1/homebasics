@@ -13,8 +13,10 @@ from sqlalchemy.orm import Session
 from app.core import clock
 from app.core.errors import AppError
 from app.db import get_db
-from app.models import OutboxEmail, Product
+from app.models import Order, OrderStatus, OutboxEmail, Product
 from app.seed.run import reset_and_seed
+from app.services import orders as order_service
+from app.services.order_state import Actor
 
 router = APIRouter(prefix="/test", tags=["test-support"])
 
@@ -89,6 +91,32 @@ def change_product(sku: str, change: ProductChange, db: Session = Depends(get_db
         setattr(product, field, value)
     db.commit()
     return product
+
+
+# --- Orders -------------------------------------------------------------------------------
+
+
+@router.post("/expire-orders")
+def expire_orders(db: Session = Depends(get_db)) -> dict[str, int]:
+    """Run the ORD-01 expiry sweep now (production would run it on a schedule)."""
+    return {"expired": order_service.expire_overdue(db)}
+
+
+class OrderStatusChange(BaseModel):
+    to: OrderStatus
+
+
+@router.post("/orders/{order_number}/status")
+def set_order_status(order_number: str, change: OrderStatusChange, db: Session = Depends(get_db)):
+    """Move an order as an admin would (processing / shipped / delivered / refunded) until
+    the admin screens exist in M6. Goes through the real state machine, so illegal moves
+    still get 409."""
+    order = db.scalar(select(Order).where(Order.order_number == order_number))
+    if order is None:
+        raise AppError(404, "order_not_found", "Order not found.")
+    order_service.transition(db, order, change.to, Actor.ADMIN, note="Changed via test support")
+    db.commit()
+    return {"order_number": order.order_number, "status": order.status.value}
 
 
 # --- Clock --------------------------------------------------------------------------------

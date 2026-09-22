@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
+from app.core.sweep import release_expired_stock
 from app.db import get_db
 from app.models import User
 from app.schemas.cart import CartItemIn, CartItemUpdate, CartOut, GuestCartIn, MergeOut
 from app.services import cart as cart_service
 
-router = APIRouter(prefix="/cart", tags=["cart"])
+router = APIRouter(prefix="/cart", tags=["cart"], dependencies=[Depends(release_expired_stock)])
 
 
 @router.get("", response_model=CartOut)

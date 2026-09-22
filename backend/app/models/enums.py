@@ -37,6 +37,7 @@ class PaymentStatus(StrEnum):
     SUCCEEDED = "succeeded"
     DECLINED = "declined"
     FAILED = "failed"
+    REFUNDED = "refunded"  # a refund of an earlier successful payment (cancellation)
 
 
 class InventoryReason(StrEnum):

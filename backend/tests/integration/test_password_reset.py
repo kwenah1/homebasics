@@ -69,7 +69,7 @@ def test_token_is_single_use(client, db, make_user):
     assert error_code(again) == "invalid_reset_token"
 
 
-def test_token_valid_until_thirty_minutes(client, db, make_user):
+def test_token_valid_until_thirty_minutes(frozen_clock, client, db, make_user):
     user, _ = make_user()
     token = request_token(client, db, user.email)
     travel(minutes=29, seconds=59)
@@ -78,7 +78,7 @@ def test_token_valid_until_thirty_minutes(client, db, make_user):
     )
 
 
-def test_token_expires_at_thirty_minutes(client, db, make_user):
+def test_token_expires_at_thirty_minutes(frozen_clock, client, db, make_user):
     user, _ = make_user()
     token = request_token(client, db, user.email)
     travel(minutes=30)
