@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from
 
 import { useCategories } from '../api/catalog'
 import { useAuth } from '../auth/AuthContext'
+import { useCart } from '../cart/CartContext'
 import { ApiStatus } from './ApiStatus'
 
 function AccountLinks() {
@@ -70,6 +71,7 @@ function HeaderSearch({ initial }: { initial: string }) {
 
 export function Layout() {
   const { data: categories = [] } = useCategories()
+  const { itemCount } = useCart()
   const { pathname } = useLocation()
   const [params] = useSearchParams()
   // On the results page the box mirrors the current search; the key remounts it when the
@@ -95,10 +97,10 @@ export function Layout() {
             <Link
               to="/cart"
               data-testid="nav-cart"
-              aria-label="Cart, 0 items"
+              aria-label={`Cart, ${itemCount} item${itemCount === 1 ? '' : 's'}`}
               className="rounded-full bg-brand-700 px-4 py-2 text-white hover:bg-brand-900"
             >
-              Cart <span data-testid="cart-count">0</span>
+              Cart <span data-testid="cart-count">{itemCount}</span>
             </Link>
           </nav>
         </div>

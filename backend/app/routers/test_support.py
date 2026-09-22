@@ -6,13 +6,14 @@ Mounted only when settings.test_endpoints_active (never in prod).
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import clock
+from app.core.errors import AppError
 from app.db import get_db
-from app.models import OutboxEmail
+from app.models import OutboxEmail, Product
 from app.seed.run import reset_and_seed
 
 router = APIRouter(prefix="/test", tags=["test-support"])
@@ -56,6 +57,38 @@ def list_emails(
         .order_by(OutboxEmail.id.desc())
         .limit(limit)
     ).all()
+
+
+# --- Product state ----------------------------------------------------------------------------
+
+
+class ProductChange(BaseModel):
+    price_cents: int | None = Field(default=None, ge=0)
+    stock_qty: int | None = Field(default=None, ge=0)
+    is_archived: bool | None = None
+
+
+class ProductState(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sku: str
+    price_cents: int
+    stock_qty: int
+    is_archived: bool
+
+
+@router.patch("/products/{sku}", response_model=ProductState)
+def change_product(sku: str, change: ProductChange, db: Session = Depends(get_db)):
+    """Simulate a price change, stock drop or archiving (until admin tools exist in M6).
+    Global state: E2E tests that use this belong in the 'isolated' project."""
+    product = db.scalar(select(Product).where(Product.sku == sku))
+    if product is None:
+        raise AppError(404, "product_not_found", "Product not found.")
+    for field, value in change.model_dump(exclude_none=True).items():
+        setattr(product, field, value)
+    db.commit()
+    return product
 
 
 # --- Clock --------------------------------------------------------------------------------
