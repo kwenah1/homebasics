@@ -17,4 +17,5 @@ KNOWN_BUGS: dict[str, str] = {
     "stock_not_restored_on_cancel": "ORD-01: cancelling an order doesn't return its stock",
     "idempotency_ignored": "CHK-08: place-order ignores the Idempotency-Key",
     "coupon_per_user_limit_ignored": "CPN-03: a shopper can reuse a once-per-customer code",
+    "review_before_delivery": "REV-01: a shipped (not yet delivered) order is enough to review",
 }

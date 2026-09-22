@@ -105,3 +105,51 @@ def deliver(client, number, admin_headers):
             f"/api/v1/admin/orders/{number}/status", json={"to": target}, headers=admin_headers
         )
         assert r.status_code == 200, r.text
+
+
+def order_row(db, user, product, status="delivered", *, quantity=1, delivered_at=None):
+    """Insert a finished order straight into the database - for tests that only need 'this
+    shopper bought that product' (reviews), not the whole checkout journey."""
+    from decimal import Decimal
+
+    from app.core import clock
+    from app.models import Order, OrderItem, OrderStatus, ShippingMethod
+    from app.services.orders import new_order_number
+
+    line = product.price_cents * quantity
+    order = Order(
+        order_number=new_order_number(),
+        user_id=user.id,
+        idempotency_key=key(),
+        request_hash="test",
+        status=OrderStatus(status),
+        shipping_method=ShippingMethod.STANDARD,
+        ship_name="Test Shopper",
+        ship_line1="1 Test St",
+        ship_city="Austin",
+        ship_state="TX",
+        ship_postal_code="78701",
+        subtotal_cents=line,
+        discount_cents=0,
+        tax_rate=Decimal(0),
+        tax_cents=0,
+        shipping_cents=0,
+        total_cents=line,
+        placed_at=clock.now(),
+        delivered_at=delivered_at,
+    )
+    db.add(order)
+    db.flush()
+    db.add(
+        OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            sku=product.sku,
+            product_name=product.name,
+            unit_price_cents=product.price_cents,
+            quantity=quantity,
+            line_total_cents=line,
+        )
+    )
+    db.flush()
+    return order

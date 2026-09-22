@@ -27,9 +27,11 @@ from app.schemas.admin import (
 )
 from app.schemas.common import SafeStr
 from app.schemas.coupons import CouponCreate, CouponOut, CouponUpdate
+from app.schemas.reviews import AdminReviewPage
 from app.schemas.types import PathId, QueryId
 from app.services import admin as admin_service
 from app.services import coupons as coupon_service
+from app.services import reviews as review_service
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -226,3 +228,22 @@ def get_coupon(coupon_id: PathId, db: Session = Depends(get_db)):
 def update_coupon(coupon_id: PathId, data: CouponUpdate, db: Session = Depends(get_db)):
     """Code, kind and amount can't change (orders refer to them); disable instead."""
     return coupon_service.update_coupon(db, coupon_id, data)
+
+
+# --- Reviews (ADM-06: moderation) ---------------------------------------------------------------
+
+
+@router.get("/reviews", response_model=AdminReviewPage)
+def list_reviews(
+    page: int = Query(default=1, ge=1, le=10_000),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    return review_service.admin_list(db, page, page_size)
+
+
+@router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_review(review_id: PathId, db: Session = Depends(get_db)):
+    """Remove an abusive review; the product's rating is recalculated without it."""
+    review_service.admin_delete(db, review_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

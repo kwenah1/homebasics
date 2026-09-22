@@ -8,7 +8,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
 from app.core.openapi import document_errors
-from app.routers import admin, auth, cart, catalog, health, me, meta, orders, test_support
+from app.routers import (
+    admin,
+    auth,
+    cart,
+    catalog,
+    health,
+    me,
+    meta,
+    orders,
+    reviews,
+    test_support,
+)
 
 API_PREFIX = "/api/v1"
 logger = logging.getLogger("homebasics.request")
@@ -60,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(document_errors(me.router), prefix=API_PREFIX)
     app.include_router(document_errors(meta.router), prefix=API_PREFIX)
     app.include_router(document_errors(catalog.router), prefix=API_PREFIX)
+    app.include_router(document_errors(reviews.router), prefix=API_PREFIX)
     app.include_router(document_errors(cart.router), prefix=API_PREFIX)
     app.include_router(document_errors(orders.checkout), prefix=API_PREFIX)
     app.include_router(document_errors(orders.orders), prefix=API_PREFIX)
