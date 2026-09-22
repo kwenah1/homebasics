@@ -179,6 +179,24 @@ PENDING_PAYMENT --pay--> PAID --> PROCESSING --> SHIPPED --> DELIVERED
 - **ADM-03** Order list with filters; advance status.
 - **ADM-04** Role-based guards on all admin endpoints; customers get 403.
 
+#### Admin rules clarified during Milestone 6
+- **ADM-01a** Products are never hard-deleted, because orders refer to them; they are archived instead. SKUs
+  (letters, numbers and one dash, stored uppercase) and names are unique. The URL slug is set
+  from the name once and **never changes**, so links keep working after a rename. The price is from
+  $0.01 to $10,000. SKU and stock cannot be edited on the product form.
+- **ADM-01b** Categories can be renamed (the slug stays the same) and deleted only when they hold no
+  products (409 `category_not_empty`). Names are unique regardless of case.
+- **ADM-02a** Stock changes only through adjustments with a reason: `restock` (must add), `damaged`
+  (must remove), or `adjustment` (either). Stock never goes below 0 (409). Every change, including
+  orders, cancellations and expiries, writes a ledger row with who made it and which order it belongs to.
+  **Invariant:** the sum of a product's ledger rows always equals its stock.
+- **ADM-03a** Admins may move orders to processing, shipped and delivered, cancel them before they ship (stock
+  goes back and a paid order is refunded), and refund delivered orders (the goods are not restocked;
+  returns come in Phase 2). They cannot set system statuses (paid, expired). An optional note goes
+  into the order history, which the customer can see.
+- **ADM-04a** One guard covers the whole `/api/v1/admin` router. Tests read the routes from the
+  OpenAPI spec and check anonymous (401), customer (403) and admin access for every one, so new
+  routes can't be left unprotected.
 ## 4. Non-functional requirements
 
 - **NFR-PERF** p95 < 300 ms for product list/search at 50 concurrent users.
@@ -238,6 +256,6 @@ Traceability: see [traceability.md](traceability.md).
 3. Catalog & search **(done)** - performance budget (NFR-PERF) measured with k6 in M7
 4. Cart & guest-merge **(done)**
 5. Checkout, pricing, mock payments, order state machine **(done)**
-6. Admin
+6. Admin **(done)** - test-only product/order shortcuts retired
 7. Test hardening - contract, perf, security, bug-injection mode
 8. Phase 2 features

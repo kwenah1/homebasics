@@ -183,7 +183,8 @@ export function AdminProductNew() {
           {error('initial_stock')}
         </label>
       </div>
-      <button type="submit" disabled={saving} className={button} data-testid="admin-product-save">
+      {/* Regression (found by E2E): submitting before the categories loaded sent no category. */}
+      <button type="submit" disabled={saving || categories.length === 0} className={button} data-testid="admin-product-save">
         {saving ? 'Saving…' : 'Create product'}
       </button>
     </form>

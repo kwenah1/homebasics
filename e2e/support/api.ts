@@ -110,21 +110,75 @@ export class Api {
     return (await this.request.post(`${API_URL}/api/v1/test/expire-orders`)).json()
   }
 
-  async setOrderStatus(orderNumber: string, to: string) {
-    const response = await this.request.post(`${API_URL}/api/v1/test/orders/${orderNumber}/status`, {
+  // --- Admin (ADM) - the real back-office API, as the seeded admin -------------------------
+
+  private adminAuth?: Promise<Record<string, string>>
+
+  admin(): Promise<Record<string, string>> {
+    this.adminAuth ??= this.authHeader(ADMIN_USER)
+    return this.adminAuth
+  }
+
+  async adminProductBySku(sku: string) {
+    const response = await this.request.get(`${API_URL}/api/v1/admin/products`, {
+      headers: await this.admin(),
+      params: { q: sku },
+    })
+    const product = (await response.json()).items.find((p: { sku: string }) => p.sku === sku)
+    if (!product) throw new Error(`no product ${sku}`)
+    return product as { id: number; sku: string; slug: string; stock_qty: number; price_cents: number }
+  }
+
+  async ledger(sku: string): Promise<{ order_number: string | null; reason: string; delta: number }[]> {
+    const product = await this.adminProductBySku(sku)
+    const response = await this.request.get(`${API_URL}/api/v1/admin/products/${product.id}/stock-movements`, {
+      headers: await this.admin(),
+    })
+    return (await response.json()).movements
+  }
+
+  async setOrderStatus(orderNumber: string, to: 'processing' | 'shipped' | 'delivered' | 'cancelled') {
+    const response = await this.request.post(`${API_URL}/api/v1/admin/orders/${orderNumber}/status`, {
+      headers: await this.admin(),
       data: { to },
     })
     if (!response.ok()) throw new Error(`status change failed: ${await response.text()}`)
   }
 
-  /** Test-only: change a product's price / stock / archived flag. Global state! */
+  /**
+   * Change a product's price / stock / archived flag through the admin API. On a seeded
+   * product this is global state: use it only in the isolated project.
+   */
   async changeProduct(
     sku: string,
     change: { price_cents?: number; stock_qty?: number; is_archived?: boolean },
   ) {
-    const response = await this.request.patch(`${API_URL}/api/v1/test/products/${sku}`, {
-      data: change,
-    })
-    if (!response.ok()) throw new Error(`change product failed: ${await response.text()}`)
+    const headers = await this.admin()
+    const product = await this.adminProductBySku(sku)
+    const base = `${API_URL}/api/v1/admin/products/${product.id}`
+    const check = async (r: import('@playwright/test').APIResponse) => {
+      if (!r.ok()) throw new Error(`change product failed: ${await r.text()}`)
+    }
+    if (change.price_cents !== undefined) {
+      await check(await this.request.patch(base, { headers, data: { price_cents: change.price_cents } }))
+    }
+    if (change.stock_qty !== undefined && change.stock_qty !== product.stock_qty) {
+      await check(
+        await this.request.post(`${base}/stock-adjustments`, {
+          headers,
+          data: { delta: change.stock_qty - product.stock_qty, reason: 'adjustment', note: 'e2e' },
+        }),
+      )
+    }
+    if (change.is_archived !== undefined) {
+      await check(await this.request.post(`${base}/${change.is_archived ? 'archive' : 'unarchive'}`, { headers }))
+    }
   }
+}
+
+export const ADMIN_USER: TestUser = {
+  email: 'admin@homebasics.test',
+  password: 'Admin12345',
+  firstName: 'Ada',
+  lastName: 'Admin',
 }

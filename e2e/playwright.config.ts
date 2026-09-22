@@ -28,13 +28,26 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
+    // Always first: put the database in the seed state so no run depends on the last one.
+    { name: 'setup', testMatch: /setup\/.*\.setup\.ts/ },
     // API-only tests: no browser needed, hit FastAPI directly.
-    { name: 'api', testMatch: /api\/.*\.spec\.ts/, use: { baseURL: API_URL } },
-    { name: 'chromium', testIgnore: /(api|isolated)\//, use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'api',
+      testMatch: /api\/.*\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { baseURL: API_URL },
+    },
+    {
+      name: 'chromium',
+      testIgnore: /(api|isolated|setup)\//,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'] },
+    },
     {
       name: 'mobile',
-      testIgnore: /(api|isolated)\//,
+      testIgnore: /(api|isolated|setup)\//,
       grep: /@mobile/,
+      dependencies: ['setup'],
       use: { ...devices['Pixel 7'] },
     },
     {

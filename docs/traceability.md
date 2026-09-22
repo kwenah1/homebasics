@@ -16,7 +16,6 @@ Layers: **U** = backend unit, **I** = backend integration (real Postgres), **F**
 | ACC-04 / 04a / 04b | 5-failure lockout, 15 min, Retry-After; no enumeration | `tests/integration/test_auth_login.py::TestLockout`, `LoginPage.test.tsx`, `e2e/tests/auth.spec.ts` (lockout), `time-travel.spec.ts` (lock lifts) | I F E | Covered |
 | ACC-05 / 05a / 05b | Profile edit, password change, address book (max 5, one default, IDOR) | `tests/integration/test_me.py`, `test_addresses.py` (incl. DB partial unique index), `AccountPage.test.tsx`, `e2e/tests/account.spec.ts`, `e2e/tests/api/auth.spec.ts` (IDOR) | I F E A | Covered |
 | ACC-06 / 06a | Reset link: emailed, single use, 30 min, signs out, unlocks | `tests/integration/test_password_reset.py`, `ResetPasswordPage.test.tsx`, `e2e/tests/auth.spec.ts` (reset), `time-travel.spec.ts` (expiry) | I F E | Covered |
-| ADM-04 | Admin-only guard; 403 for customers; demotion immediate | `tests/integration/test_me.py::TestRoleGuard` | I | Partial (no admin endpoints yet - M6) |
 
 ## Catalog (Milestone 3)
 
@@ -33,7 +32,6 @@ filter/sort/page combinations per run and each must match the oracle exactly.
 | CAT-05 / 05a | 0 = out of stock (Add disabled), 1-5 = "Only X left", 6+ = hidden count; qty cap min(10, stock) | `test_catalog_rules.py::test_stock_status_boundaries`, `test_max_order_qty_caps_at_ten_and_stock`, `test_catalog.py::TestStockFields`, `ProductDetailPage.test.tsx`, `catalog.spec.ts` (boundary products 0/1/5/6/150), `api/catalog.spec.ts` | U I F E A | Covered |
 | CAT-06 | Rating sort, unrated last | `test_catalog.py::TestSort`, DB check `ck_products_rating_consistent` | I | Covered |
 | CAT-07 | List state in URL: reload, Back, deep links, sanitised | `catalogParams.test.ts`, `catalog.spec.ts::page, sort and filters survive reload and Back` | F E | Covered |
-| ADM-01 | Archived products hidden from list, detail and category counts | `test_catalog.py` (archived tests), `TestCategories` | I | Covered (storefront side) |
 
 ## Cart (Milestone 4)
 
@@ -64,11 +62,19 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | ORD-01 / 01a | Stock taken at placement, returned on cancel/expiry; 30-min window; sweep before stock reads | `TestExpiry` (frozen clock, 29:59 vs 30:00), `TestCancel`, `isolated/checkout-state.spec.ts` (unpaid order expires, item back on sale; pay after window) | I E | Covered |
 | ORD-02 / 02a | State machine: exact allowed (from, to, who) set; 409 otherwise | `test_payments_and_states.py::TestStateMachine::test_every_combination` (all 192 cases), `TestLifecycleAndHistory`, `TestCancel::test_cancel_until_shipped`, `checkout.spec.ts::shipped orders can no longer be cancelled` | U I E | Covered |
 | ORD-03 | Every transition audited (from, to, who, note) | `TestLifecycleAndHistory::test_full_happy_path_is_audited`, `PayAndOrders.test.tsx` | I F | Covered |
+## Admin (Milestone 6)
+
+| Req | Description | Tests | Layers | Status |
+|---|---|---|---|---|
+| ADM-01 / 01a | Product create / edit / archive; unique SKU and name; slug, SKU and stock not editable; archived hidden from store but kept on orders | `tests/integration/test_admin.py::TestProducts`, `test_catalog.py` (archived excluded), `Admin.test.tsx`, `e2e/tests/admin.spec.ts` (create -> on sale, archive/unarchive, duplicate SKU, price change flags carts) | I F E | Covered |
+| ADM-01b | Categories: create, rename (slug stable), delete only when empty | `test_admin.py::TestCategories`, `admin.spec.ts::categories` | I E | Covered |
+| ADM-02 / 02a | Stock adjustments with reasons and sign rules; never below 0; ledger with actor; **sum(ledger) == stock for every product** | `test_admin.py::TestStock`, `test_ledger_reconciles_for_every_product_after_orders`, `Admin.test.tsx`, `admin.spec.ts::restock, damage and the ledger` | I F E | Covered |
+| ADM-03 / 03a | Order list/search/detail; fulfil, cancel (restock + refund), refund delivered; system statuses refused; customer sees staff notes | `test_admin.py::TestOrders`, `test_checkout.py::TestLifecycleAndHistory`, `Admin.test.tsx`, `admin.spec.ts::orders` | I F E | Covered |
+| ADM-04 / 04a | Every admin route: anonymous 401, customer 403, admin allowed - enumerated from the OpenAPI spec; UI staff-only guard; demotion takes effect immediately | `test_admin.py::test_anonymous_gets_401` / `test_customer_gets_403` / `test_admin_is_let_through` (17 routes each), `test_me.py::TestRoleGuard`, `Admin.test.tsx`, `admin.spec.ts::access` | I F E | Covered |
 ## Later milestones
 
 | Req | Description | Tests | Status |
 |---|---|---|---|
-| ADM-02..03 | Inventory, order admin | - | Planned M6 |
 
 ## Non-functional
 
@@ -118,3 +124,12 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | 18 | E2E (isolated, intermittent) | **Shoppers signed out at random:** navigating while a silent refresh was in flight lost the rotated cookie; the next page replayed the old token and theft detection revoked the session | 30-second reuse grace for *just-rotated* tokens of a still-alive family (a logout, a password change or a real theft still revokes): `test_auth_sessions.py::test_rotated_token_reused_within_grace_is_a_benign_race`, `test_grace_never_survives_a_password_change`, `test_logged_out_token_gets_no_grace` |
 | 19 | E2E (isolated, intermittent) | Test-only reset deadlocked with a request still in flight from the previous test's page | Reset retries on deadlock/lock timeout (it is all-or-nothing) |
 | 20 | E2E (isolated, 1 run in 4) | Expiry sweep used `SKIP LOCKED`: a request skipped the order another sweep was expiring and read stock before that commit, showing "Out of stock" for an item back on sale | Sweep waits for the lock (Postgres re-checks the row and skips it; the next read sees the restock): `isolated/checkout-state.spec.ts::unpaid order expires...` |
+
+## Defects found by the suites during Milestone 6
+
+| # | Found by | Defect | Fix + regression test |
+|---|---|---|---|
+| 21 | Integration test | Lowercase SKUs were rejected instead of uppercased: Pydantic checks `pattern` *before* `to_upper` | Case-insensitive pattern; `to_upper` normalises: `test_admin.py::test_sku_is_uppercased` |
+| 22 | E2E (test design) | Admin tests that created products and categories in parallel broke the catalog tests' global counts (60 products / 10 per category / 6 categories) | Catalog-changing admin tests moved to the serial `isolated` project; parallel order test asserts its own ledger row, not a shared total |
+| 23 | E2E (test infrastructure) | One failed run left stray data, because Playwright **skips dependent projects** after a failure, so the isolated project's cleanup never ran; every later run started dirty | `setup` project resets the DB at the *start* of every run; all projects depend on it |
+| 24 | E2E | The New-product form could be submitted before its category list loaded, sending no category | Save disabled until categories load: `isolated/admin-catalog.spec.ts::duplicate SKU...` |
