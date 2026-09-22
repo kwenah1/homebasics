@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core import clock
+from app.core import bugs, clock
 from app.core.errors import AppError
 from app.models import (
     InventoryMovement,
@@ -125,7 +125,9 @@ def transition(
         )
     )
     order.status = target
-    if target in order_state.RESTOCK_ON:
+    if target in order_state.RESTOCK_ON and not (
+        target == OrderStatus.CANCELLED and bugs.active("stock_not_restored_on_cancel")
+    ):
         _restock(db, order, InventoryReason(f"order_{target.value}"))
 
 
@@ -209,7 +211,7 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
     existing = db.scalar(
         select(Order).where(Order.user_id == user.id, Order.idempotency_key == key)
     )
-    if existing is not None:
+    if existing is not None and not bugs.active("idempotency_ignored"):
         if existing.request_hash != fingerprint:
             raise AppError(
                 422,

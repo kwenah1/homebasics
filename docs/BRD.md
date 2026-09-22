@@ -211,6 +211,31 @@ PENDING_PAYMENT --pay--> PAID --> PROCESSING --> SHIPPED --> DELIVERED
   - Controllable clock for time-based rules (expiry, lockout, coupons)
   - Optional bug-injection flags to prove the suites catch regressions
 
+Clarifications (M7):
+
+- **NFR-SEC-01** Per-client (IP) sliding-window limits on auth: login 10/min, register 5/10 min,
+  forgot-password 5/15 min, reset-password 10/15 min, refresh 30/min. Over the limit: `429
+  rate_limited` with `Retry-After`. Blocked attempts don't extend the window. On automatically in
+  prod and can't be switched off there; off by default in dev/test (the E2E suite signs in hundreds
+  of times from one address), where tests switch it on. In-memory, so one process only - several
+  instances would need a shared store (Redis); recorded as a known limit.
+- **NFR-SEC-02** No input can cause a 500: ids are bounded to the database's integer range, page
+  numbers to 10 000, and NUL bytes are rejected in every string (body, query and path) - all 422.
+  A body that can't be decoded is `422 invalid_body`.
+- **NFR-SEC-03** Known-vulnerability audits (`pip-audit`, `npm audit --omit=dev`, high and above)
+  fail CI. A nightly OWASP ZAP scan covers the API (from its OpenAPI spec) and the web app.
+- **NFR-QUAL-01** The OpenAPI spec is the contract. Every route documents the errors it can return
+  (401 if it needs a session, 403 if admin-only, 404 for path lookups, 422 for input, plus its own
+  business codes), all with the one error shape. Schemathesis fuzzes every operation and fails on
+  a 500, an undocumented status or a body that doesn't match its schema.
+- **NFR-PERF-01** Locust (Python, like the rest of the backend) replaces k6: 50 users browsing,
+  filtering and searching for 2 minutes; p95 under 300 ms per endpoint and under 1% failures, or the
+  nightly job fails. Warm-up requests are reported but not held to the budget.
+- **NFR-TEST-01** Bug injection: `BUG_INJECTION=name,...` switches on known, realistic defects
+  (catalogue in `app/core/bug_catalog.py`, each tied to the rule it breaks). `scripts/bug_hunt.py`
+  switches each on in turn and fails if the tests stay green; CI runs it on every PR. Unknown names
+  are rejected at startup, and prod refuses any.
+
 ## 5. Architecture
 
 React 19 + TypeScript + Vite + React Router + TanStack Query + Tailwind 4
@@ -243,8 +268,9 @@ Phase 2 adds `coupons`, `coupon_redemptions`, `reviews`, `wishlist_items`, `retu
 | Unit/component (FE) | Vitest, Testing Library, MSW | Components, forms, API states |
 | E2E | Playwright (TS), Page Object Model, fixtures | Critical journeys, desktop + mobile |
 | Accessibility | @axe-core/playwright | WCAG 2.1 AA per page |
-| Performance | k6 | Catalog, search, checkout load |
-| Security | OWASP ZAP baseline, Bandit (ruff `S`), pip-audit, npm audit | |
+| Performance | Locust | Catalog browsing and search, p95 budget (nightly) |
+| Security | OWASP ZAP (API + web, nightly), Bandit (ruff `S`), pip-audit, npm audit | |
+| Test effectiveness | Bug injection + `scripts/bug_hunt.py` | Every known bug must turn the suite red |
 | Reporting | JUnit XML, Playwright HTML, coverage (target 90% services) | |
 
 Traceability: see [traceability.md](traceability.md).
@@ -252,10 +278,10 @@ Traceability: see [traceability.md](traceability.md).
 ## 9. Milestones
 
 1. Foundation - repo, CI, DB + migrations, seed data, test harness **(done)**
-2. Accounts & auth **(done)** - rate limiting on auth endpoints deferred to M7 (NFR-SEC)
-3. Catalog & search **(done)** - performance budget (NFR-PERF) measured with k6 in M7
+2. Accounts & auth **(done)** - rate limiting on auth endpoints added in M7 (NFR-SEC-01)
+3. Catalog & search **(done)** - performance budget (NFR-PERF) measured with Locust in M7
 4. Cart & guest-merge **(done)**
 5. Checkout, pricing, mock payments, order state machine **(done)**
 6. Admin **(done)** - test-only product/order shortcuts retired
-7. Test hardening - contract, perf, security, bug-injection mode
+7. Test hardening - contract, perf, security, bug-injection mode **(done)**
 8. Phase 2 features

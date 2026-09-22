@@ -3,6 +3,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.common import InputModel
+from app.schemas.types import INT4_MAX
+
 StockStatus = Literal["in_stock", "low_stock", "out_of_stock"]
 
 
@@ -14,15 +17,15 @@ class ProductSort(StrEnum):
     RATING = "rating"
 
 
-class ProductQuery(BaseModel):
+class ProductQuery(InputModel):
     """Query string for GET /products. Unknown parameters are rejected (422)."""
 
     model_config = ConfigDict(extra="forbid")
 
     category: str | None = Field(default=None, max_length=80, description="Category slug")
     q: str | None = Field(default=None, max_length=100, description="Keywords; all must match")
-    min_price_cents: int | None = Field(default=None, ge=0)
-    max_price_cents: int | None = Field(default=None, ge=0)
+    min_price_cents: int | None = Field(default=None, ge=0, le=INT4_MAX)
+    max_price_cents: int | None = Field(default=None, ge=0, le=INT4_MAX)
     in_stock: bool = False
     sort: ProductSort = ProductSort.NAME
     page: int = Field(default=1, ge=1, le=10_000)

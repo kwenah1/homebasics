@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     web_base_url: str = "http://localhost:5173"
 
     # NoDecode: accept a plain comma-separated env value instead of requiring JSON.
+    # NFR-SEC auth rate limits. None = automatic: on in prod, off in dev/test.
+    rate_limit_enabled: bool | None = None
+    # Known, deliberate defects for proving the tests work (see app/core/bugs.py). Never in prod.
+    bug_injection: Annotated[list[str], NoDecode] = []
+
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     enable_test_endpoints: bool = False
 
@@ -50,6 +55,18 @@ class Settings(BaseSettings):
         for prefix in ("postgresql://", "postgres://"):
             if value and value.startswith(prefix):
                 return "postgresql+psycopg://" + value.removeprefix(prefix)
+        return value
+
+    @field_validator("bug_injection", mode="before")
+    @classmethod
+    def split_bugs(cls, value: object) -> object:
+        from app.core.bug_catalog import KNOWN_BUGS
+
+        if isinstance(value, str):
+            value = [b.strip() for b in value.split(",") if b.strip()]
+        unknown = set(value or []) - set(KNOWN_BUGS)  # type: ignore[arg-type]
+        if unknown:
+            raise ValueError(f"unknown BUG_INJECTION names: {sorted(unknown)}")
         return value
 
     @field_validator("cors_origins", mode="before")
@@ -68,7 +85,17 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET must be set to 32+ random characters in prod")
             if self.bcrypt_rounds < 12:
                 raise ValueError("BCRYPT_ROUNDS must be at least 12 in prod")
+            if self.bug_injection:
+                raise ValueError("BUG_INJECTION must be empty in prod")
+            if self.rate_limit_enabled is False:
+                raise ValueError("RATE_LIMIT_ENABLED can't be turned off in prod")
         return self
+
+    @property
+    def rate_limit_active(self) -> bool:
+        if self.rate_limit_enabled is None:
+            return self.environment == "prod"
+        return self.rate_limit_enabled
 
     @property
     def test_endpoints_active(self) -> bool:

@@ -6,3 +6,5 @@ python-dotenv>=1.1
 factory-boy>=3.3
 hypothesis>=6.140
 ruff>=0.14
+schemathesis>=4.27
+pip-audit>=2.10

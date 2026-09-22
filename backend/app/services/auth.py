@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.core import clock
+from app.core import bugs, clock
 from app.core.errors import AppError
 from app.core.security import (
     burn_password_check,
@@ -84,7 +84,7 @@ def authenticate(db: Session, email: str, password: str) -> User:
 
     if not verify_password(password, user.password_hash):
         user.failed_login_count += 1
-        if user.failed_login_count >= settings.lockout_threshold:
+        if user.failed_login_count >= settings.lockout_threshold + bugs.active("lockout_after_six"):
             user.locked_until = now + timedelta(minutes=settings.lockout_minutes)
             db.commit()
             raise _locked_error(user)

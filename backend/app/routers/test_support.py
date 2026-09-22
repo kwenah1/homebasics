@@ -14,6 +14,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core import clock
+from app.core.rate_limit import limiter
 from app.db import get_db
 from app.models import OutboxEmail
 from app.seed.run import reset_and_seed
@@ -37,6 +38,7 @@ def reset_database(db: Session = Depends(get_db)) -> ResetResponse:
     so retrying it is safe.
     """
     clock.reset()
+    limiter.reset()
     for attempt in range(1, 4):
         try:
             return ResetResponse(reset=True, seeded=reset_and_seed(db))

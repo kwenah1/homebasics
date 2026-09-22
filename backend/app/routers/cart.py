@@ -6,6 +6,7 @@ from app.core.sweep import release_expired_stock
 from app.db import get_db
 from app.models import User
 from app.schemas.cart import CartItemIn, CartItemUpdate, CartOut, GuestCartIn, MergeOut
+from app.schemas.types import PathId
 from app.services import cart as cart_service
 
 router = APIRouter(prefix="/cart", tags=["cart"], dependencies=[Depends(release_expired_stock)])
@@ -16,7 +17,14 @@ def get_cart(user: User = Depends(get_current_user), db: Session = Depends(get_d
     return cart_service.get_cart(db, user)
 
 
-@router.post("/items", response_model=CartOut)
+@router.post(
+    "/items",
+    response_model=CartOut,
+    responses={
+        404: {"description": "No such product"},
+        409: {"description": "Out of stock or over the line limit"},
+    },
+)
 def add_item(
     data: CartItemIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
@@ -25,9 +33,13 @@ def add_item(
     return cart_service.add_item(db, user, data.product_id, data.quantity)
 
 
-@router.patch("/items/{product_id}", response_model=CartOut)
+@router.patch(
+    "/items/{product_id}",
+    response_model=CartOut,
+    responses={409: {"description": "Not enough stock, or product unavailable"}},
+)
 def set_quantity(
-    product_id: int,
+    product_id: PathId,
     data: CartItemUpdate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -37,7 +49,7 @@ def set_quantity(
 
 @router.delete("/items/{product_id}", response_model=CartOut)
 def remove_item(
-    product_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    product_id: PathId, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     return cart_service.remove_item(db, user, product_id)
 

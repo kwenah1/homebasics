@@ -6,19 +6,20 @@ from pydantic import BaseModel, Field, StringConstraints, field_validator
 from app.models import OrderStatus, PaymentStatus, ShippingMethod
 from app.schemas.cart import CartLineOut
 from app.schemas.common import StrictModel
+from app.schemas.types import INT4_MAX, DbId
 
 # Keys are scoped per shopper and stored as "<user id>:<key>", so they are capped at 48 chars.
 IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_-]{8,48}$"
 
 
 class QuoteIn(StrictModel):
-    address_id: int = Field(ge=1)
+    address_id: DbId
     shipping_method: ShippingMethod = ShippingMethod.STANDARD
 
 
 class PlaceOrderIn(QuoteIn):
     # The total the shopper saw and agreed to. If anything changed since, we refuse (409).
-    expected_total_cents: int = Field(ge=0)
+    expected_total_cents: int = Field(ge=0, le=INT4_MAX)
 
 
 class ShippingOption(BaseModel):

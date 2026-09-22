@@ -31,14 +31,16 @@ jobs:
           --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
     defaults: { run: { working-directory: backend } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: '${{ env.PYTHON_VERSION }}', cache: pip, cache-dependency-path: backend/requirements*.txt }
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
       - run: ruff format --check .
+      - name: Dependency audit (known CVEs)
+        run: pip-audit -r requirements.txt
       - run: pytest --cov --cov-report=xml --cov-report=term --junitxml=results/junit.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-results
@@ -51,14 +53,35 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: frontend } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
+      - name: Dependency audit (known CVEs in shipped packages)
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:coverage
       - run: npm run build
+
+  bug-hunt:
+    name: Bug hunt - every injected bug must turn the tests red
+    needs: [backend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: homebasics, POSTGRES_PASSWORD: homebasics, POSTGRES_DB: homebasics }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '${{ env.PYTHON_VERSION }}', cache: pip, cache-dependency-path: backend/requirements*.txt }
+      - run: pip install -r requirements-dev.txt
+      - run: python scripts/bug_hunt.py
 
   e2e:
     name: E2E - Playwright (API, UI, a11y)
@@ -76,10 +99,10 @@ jobs:
       ENABLE_TEST_ENDPOINTS: 'true'
       JWT_SECRET: ci-only-secret-not-used-in-production-000000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: '${{ env.PYTHON_VERSION }}' }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - name: Backend venv + migrate + seed
         working-directory: backend
@@ -96,6 +119,6 @@ jobs:
         working-directory: e2e
       - run: npx playwright test
         working-directory: e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: playwright-report, path: e2e/playwright-report, retention-days: 14 }

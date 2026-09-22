@@ -12,6 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload
 
+from app.core import bugs
 from app.core.errors import AppError
 from app.models import Cart, CartItem, Product, User
 from app.schemas.cart import (
@@ -36,7 +37,7 @@ FREE_SHIPPING_THRESHOLD_CENTS = 5000  # CHK-03 (display estimate; checkout decid
 
 def line_limit(stock_qty: int) -> int:
     """CRT-01: a line may hold at most min(10, stock) units."""
-    return max(0, min(MAX_LINE_QTY, stock_qty))
+    return max(0, min(MAX_LINE_QTY + bugs.active("cart_allows_eleven"), stock_qty))
 
 
 def line_issue(product: Product, quantity: int) -> tuple[LineIssue | None, int | None]:
