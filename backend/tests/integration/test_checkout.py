@@ -430,11 +430,13 @@ class TestCancel:
         assert order["history"][-1]["note"] == "Cancelled by customer; payment refunded"
 
     @pytest.mark.parametrize("path", [["processing"], ["processing", "shipped"]])
-    def test_cancel_until_shipped(self, client, pending, path):
+    def test_cancel_until_shipped(self, client, pending, path, admin_headers):
         pay(client, pending["order_number"])
         for status in path:
             client.post(
-                f"/api/v1/test/orders/{pending['order_number']}/status", json={"to": status}
+                f"/api/v1/admin/orders/{pending['order_number']}/status",
+                json={"to": status},
+                headers=admin_headers,
             )
         response = client.post(f"/api/v1/orders/{pending['order_number']}/cancel")
         if path[-1] == "shipped":
@@ -454,15 +456,19 @@ class TestCancel:
 
 
 class TestLifecycleAndHistory:
-    def test_full_happy_path_is_audited(self, client, pending):
+    def test_full_happy_path_is_audited(self, client, pending, admin_headers):
         """ORD-03: every transition recorded in order."""
         number = pending["order_number"]
         pay(client, number)
-        for status in ("processing", "shipped", "delivered", "refunded"):
-            assert (
-                client.post(f"/api/v1/test/orders/{number}/status", json={"to": status}).status_code
-                == 200
+        for status in ("processing", "shipped", "delivered"):
+            response = client.post(
+                f"/api/v1/admin/orders/{number}/status", json={"to": status}, headers=admin_headers
             )
+            assert response.status_code == 200, response.text
+        refund = client.post(
+            f"/api/v1/admin/orders/{number}/refund", json={}, headers=admin_headers
+        )
+        assert refund.status_code == 200
         history = client.get(f"/api/v1/orders/{number}").json()["history"]
         assert [(h["from_status"], h["to_status"]) for h in history] == [
             (None, "pending_payment"),
@@ -473,11 +479,19 @@ class TestLifecycleAndHistory:
             ("delivered", "refunded"),
         ]
 
-    @pytest.mark.parametrize("target", ["shipped", "delivered", "pending_payment", "refunded"])
-    def test_skipping_or_going_backwards_is_409(self, client, pending, target):
-        """ORD-02"""
+    @pytest.mark.parametrize("target", ["processing", "shipped", "delivered"])
+    def test_skipping_ahead_of_payment_is_409(self, client, pending, target, admin_headers):
+        """ORD-02: an unpaid order can't be fulfilled, even by an admin."""
         response = client.post(
-            f"/api/v1/test/orders/{pending['order_number']}/status", json={"to": target}
+            f"/api/v1/admin/orders/{pending['order_number']}/status",
+            json={"to": target},
+            headers=admin_headers,
+        )
+        assert (response.status_code, error_code(response)) == (409, "invalid_transition")
+
+    def test_refund_before_delivery_is_409(self, client, pending, admin_headers):
+        response = client.post(
+            f"/api/v1/admin/orders/{pending['order_number']}/refund", json={}, headers=admin_headers
         )
         assert (response.status_code, error_code(response)) == (409, "invalid_transition")
 

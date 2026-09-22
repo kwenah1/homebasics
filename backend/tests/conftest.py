@@ -156,6 +156,20 @@ def auth_as(client):
 
 
 @pytest.fixture
+def admin_headers(db):
+    """Bearer header for the seeded admin - minted directly, so the TestClient's own cookies
+    and Authorization header (usually a signed-in customer) are left alone."""
+    from sqlalchemy import select
+
+    from app.core.tokens import create_access_token
+    from app.models import User
+
+    admin = db.scalar(select(User).where(User.email == "admin@homebasics.test"))
+    token, _ = create_access_token(admin.id, admin.role.value)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def customer(make_user, auth_as):
     """A fresh, signed-in customer (not a seed user, so tests can mutate it freely)."""
     user, password = make_user()

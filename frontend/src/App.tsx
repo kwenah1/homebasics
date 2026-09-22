@@ -1,6 +1,12 @@
 import { Route, Routes } from 'react-router-dom'
 
+import { RequireAdmin } from './auth/RequireAdmin'
 import { RequireAuth } from './auth/RequireAuth'
+import { AdminCategories } from './pages/admin/AdminCategories'
+import { AdminDashboard } from './pages/admin/AdminDashboard'
+import { AdminLayout } from './pages/admin/AdminLayout'
+import { AdminOrderDetail, AdminOrders } from './pages/admin/AdminOrders'
+import { AdminProductDetail, AdminProductNew, AdminProducts } from './pages/admin/AdminProducts'
 import { Layout } from './components/Layout'
 import { AccountPage } from './pages/account/AccountPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
@@ -35,6 +41,17 @@ export function AppRoutes() {
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/:orderNumber" element={<OrderDetailPage />} />
           <Route path="orders/:orderNumber/pay" element={<PayPage />} />
+        </Route>
+        <Route element={<RequireAdmin />}>
+          <Route path="admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="products" element={<AdminProducts />} />
+            <Route path="products/new" element={<AdminProductNew />} />
+            <Route path="products/:id" element={<AdminProductDetail />} />
+            <Route path="categories" element={<AdminCategories />} />
+            <Route path="orders" element={<AdminOrders />} />
+            <Route path="orders/:orderNumber" element={<AdminOrderDetail />} />
+          </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

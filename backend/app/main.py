@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
-from app.routers import auth, cart, catalog, health, me, meta, orders, test_support
+from app.routers import admin, auth, cart, catalog, health, me, meta, orders, test_support
 
 API_PREFIX = "/api/v1"
 logger = logging.getLogger("homebasics.request")
@@ -60,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(cart.router, prefix=API_PREFIX)
     app.include_router(orders.checkout, prefix=API_PREFIX)
     app.include_router(orders.orders, prefix=API_PREFIX)
+    app.include_router(admin.router, prefix=API_PREFIX)
     if settings.test_endpoints_active:
         app.include_router(test_support.router, prefix=API_PREFIX)
 
