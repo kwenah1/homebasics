@@ -19,6 +19,7 @@ from app.routers import (
     orders,
     reviews,
     test_support,
+    wishlist,
 )
 
 API_PREFIX = "/api/v1"
@@ -69,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(document_errors(health.router), prefix=API_PREFIX)
     app.include_router(document_errors(auth.router), prefix=API_PREFIX)
     app.include_router(document_errors(me.router), prefix=API_PREFIX)
+    app.include_router(document_errors(wishlist.router), prefix=API_PREFIX)
     app.include_router(document_errors(meta.router), prefix=API_PREFIX)
     app.include_router(document_errors(catalog.router), prefix=API_PREFIX)
     app.include_router(document_errors(reviews.router), prefix=API_PREFIX)
