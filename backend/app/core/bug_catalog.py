@@ -16,4 +16,5 @@ KNOWN_BUGS: dict[str, str] = {
     "lockout_after_six": "ACC-04: account locks on the 6th failure instead of the 5th",
     "stock_not_restored_on_cancel": "ORD-01: cancelling an order doesn't return its stock",
     "idempotency_ignored": "CHK-08: place-order ignores the Idempotency-Key",
+    "coupon_per_user_limit_ignored": "CPN-03: a shopper can reuse a once-per-customer code",
 }

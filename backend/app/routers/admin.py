@@ -26,8 +26,10 @@ from app.schemas.admin import (
     StockLedger,
 )
 from app.schemas.common import SafeStr
+from app.schemas.coupons import CouponCreate, CouponOut, CouponUpdate
 from app.schemas.types import PathId, QueryId
 from app.services import admin as admin_service
+from app.services import coupons as coupon_service
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -195,3 +197,32 @@ def refund(
 ):
     """Delivered orders only."""
     return admin_service.refund(db, admin, order_number, data.note)
+
+
+# --- Coupons (ADM-05) ---------------------------------------------------------------------------
+
+
+@router.get("/coupons", response_model=list[CouponOut])
+def list_coupons(db: Session = Depends(get_db)):
+    return coupon_service.list_coupons(db)
+
+
+@router.post(
+    "/coupons",
+    response_model=CouponOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={409: {"description": "Code already used"}},
+)
+def create_coupon(data: CouponCreate, db: Session = Depends(get_db)):
+    return coupon_service.create_coupon(db, data)
+
+
+@router.get("/coupons/{coupon_id}", response_model=CouponOut)
+def get_coupon(coupon_id: PathId, db: Session = Depends(get_db)):
+    return coupon_service.get_coupon(db, coupon_id)
+
+
+@router.patch("/coupons/{coupon_id}", response_model=CouponOut)
+def update_coupon(coupon_id: PathId, data: CouponUpdate, db: Session = Depends(get_db)):
+    """Code, kind and amount can't change (orders refer to them); disable instead."""
+    return coupon_service.update_coupon(db, coupon_id, data)

@@ -38,6 +38,7 @@ from app.schemas.checkout import (
 )
 from app.services import addresses as address_service
 from app.services import cart as cart_service
+from app.services import coupons as coupon_service
 from app.services import order_state
 from app.services import payments as gateway
 from app.services.order_state import Actor
@@ -71,10 +72,13 @@ def build_quote(db: Session, user: User, data: QuoteIn) -> QuoteOut:
     rate = _tax_rate(db, address.state)
     cart = cart_service.get_cart(db, user)
     healthy = [line.line_total_cents for line in cart.items if line.issue is None]
-    totals = price_order(healthy, rate.rate, data.shipping_method)
+    coupon, discount = None, 0
+    if data.coupon_code:
+        coupon, discount = coupon_service.evaluate(db, user, data.coupon_code, sum(healthy))
+    totals = price_order(healthy, rate.rate, data.shipping_method, discount)
 
     options = [
-        ShippingOption(method=m, cents=price_order(healthy, rate.rate, m).shipping_cents)
+        ShippingOption(method=m, cents=price_order(healthy, rate.rate, m, discount).shipping_cents)
         for m in ShippingMethod
     ]
     blocking = (
@@ -89,6 +93,7 @@ def build_quote(db: Session, user: User, data: QuoteIn) -> QuoteOut:
         item_count=cart.item_count,
         subtotal_cents=totals.subtotal_cents,
         discount_cents=totals.discount_cents,
+        coupon=coupon_service.applied(coupon, totals.discount_cents) if coupon else None,
         tax_rate=float(rate.rate),
         tax_state=rate.state_code,
         tax_cents=totals.tax_cents,
@@ -204,6 +209,8 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
         address_id=data.address_id,
         shipping_method=data.shipping_method.value,
         expected_total_cents=data.expected_total_cents,
+        # Only when present, so fingerprints of coupon-less requests are unchanged.
+        **({"coupon_code": data.coupon_code} if data.coupon_code else {}),
     )
     cart = cart_service.lock_cart(db, user)  # serialises this shopper's checkouts
 
@@ -262,11 +269,15 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
             extra={"lines": problems},
         )
 
-    totals = price_order(
-        [products[line.product_id].price_cents * line.quantity for line in lines],
-        rate.rate,
-        data.shipping_method,
-    )
+    line_totals = [products[line.product_id].price_cents * line.quantity for line in lines]
+    coupon, discount = None, 0
+    if data.coupon_code:
+        # Locks the coupon row (after the products - every checkout takes locks in the same
+        # order: cart, products, coupon), so the last use can't be taken twice (CPN-04).
+        coupon, discount = coupon_service.evaluate(
+            db, user, data.coupon_code, sum(line_totals), lock=True
+        )
+    totals = price_order(line_totals, rate.rate, data.shipping_method, discount)
     if totals.total_cents != data.expected_total_cents:
         raise AppError(
             409,
@@ -294,6 +305,7 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
         ship_postal_code=address.postal_code,
         subtotal_cents=totals.subtotal_cents,
         discount_cents=totals.discount_cents,
+        coupon_code=coupon.code if coupon else None,
         tax_rate=totals.tax_rate,
         tax_cents=totals.tax_cents,
         shipping_cents=totals.shipping_cents,
@@ -303,6 +315,8 @@ def place_order(db: Session, user: User, data: PlaceOrderIn, key: str) -> tuple[
     )
     db.add(order)
     db.flush()
+    if coupon is not None:
+        coupon_service.redeem(db, coupon, user, order)
 
     for line in lines:
         product = products[line.product_id]
@@ -500,6 +514,7 @@ def order_out(db: Session, order: Order) -> OrderOut:
         ],
         subtotal_cents=order.subtotal_cents,
         discount_cents=order.discount_cents,
+        coupon_code=order.coupon_code,
         tax_rate=float(order.tax_rate),
         tax_cents=order.tax_cents,
         shipping_cents=order.shipping_cents,

@@ -10,6 +10,7 @@ from app.db import new_session
 from app.models import (
     Base,
     Category,
+    Coupon,
     InventoryMovement,
     InventoryReason,
     Product,
@@ -58,6 +59,7 @@ def seed(db: Session) -> dict[str, int]:
         product = Product(
             rating_avg=rating_avg,
             rating_count=rating_count,
+            rating_total=data.seed_rating_total(rating_avg, rating_count),
             category_id=categories[cat_slug].id,
             sku=sku,
             name=name,
@@ -76,12 +78,15 @@ def seed(db: Session) -> dict[str, int]:
                 )
             )
 
+    db.add_all(Coupon(**c) for c in data.COUPONS)
+
     db.commit()
     return {
         "tax_rates": len(data.TAX_RATES),
         "users": len(data.USERS),
         "categories": len(categories),
         "products": len(rows),
+        "coupons": len(data.COUPONS),
     }
 
 

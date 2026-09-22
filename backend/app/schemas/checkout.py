@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, StringConstraints, field_validator
 from app.models import OrderStatus, PaymentStatus, ShippingMethod
 from app.schemas.cart import CartLineOut
 from app.schemas.common import StrictModel
+from app.schemas.coupons import AppliedCoupon, CouponCode
 from app.schemas.types import INT4_MAX, DbId
 
 # Keys are scoped per shopper and stored as "<user id>:<key>", so they are capped at 48 chars.
@@ -15,6 +16,7 @@ IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_-]{8,48}$"
 class QuoteIn(StrictModel):
     address_id: DbId
     shipping_method: ShippingMethod = ShippingMethod.STANDARD
+    coupon_code: CouponCode | None = None  # CPN-03: at most one per order
 
 
 class PlaceOrderIn(QuoteIn):
@@ -32,6 +34,7 @@ class QuoteOut(BaseModel):
     item_count: int
     subtotal_cents: int
     discount_cents: int
+    coupon: AppliedCoupon | None
     tax_rate: float
     tax_state: str
     tax_cents: int
@@ -115,6 +118,7 @@ class OrderOut(BaseModel):
     items: list[OrderItemOut]
     subtotal_cents: int
     discount_cents: int
+    coupon_code: str | None
     tax_rate: float
     tax_cents: int
     shipping_cents: int
