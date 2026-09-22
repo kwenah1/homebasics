@@ -62,7 +62,7 @@ def spray(products):
 class TestWindow:
     def test_delivered_order_offers_returns_for_30_days(self, client, delivered, products):
         window = delivered["return_window"]
-        assert window["can_return"] is True
+        assert (window["status"], window["can_return"]) == ("open", True)
         returnable = {r["sku"]: r["quantity"] for r in window["returnable"]}
         assert returnable == {"KIT-001": 2, "CLN-001": 1}
         assert datetime.fromisoformat(window["return_by"]) - datetime.fromisoformat(
@@ -73,7 +73,12 @@ class TestWindow:
         add(client, products["KIT-001"])
         order = place(client, address).json()
         assert pay(client, order["order_number"]).status_code == 200
-        assert order["return_window"] == {"can_return": False, "return_by": None, "returnable": []}
+        assert order["return_window"] == {
+            "status": "not_delivered",
+            "can_return": False,
+            "return_by": None,
+            "returnable": [],
+        }
         r = request_return(
             client, order["order_number"], [{"product_id": pan(products), "quantity": 1}]
         )
@@ -90,6 +95,7 @@ class TestWindow:
         auth_as(customer.email, DEFAULT_PASSWORD)
         order = client.get(order_url(delivered["order_number"])).json()
         assert order["return_window"]["can_return"] is False
+        assert order["return_window"]["status"] == "closed"
         r = request_return(
             client, delivered["order_number"], [{"product_id": pan(products), "quantity": 1}]
         )

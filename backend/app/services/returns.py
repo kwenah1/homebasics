@@ -110,8 +110,18 @@ def returnable(db: Session, order: Order) -> list[Returnable]:
 
 
 def window(db: Session, order: Order) -> ReturnWindow:
-    left = returnable(db, order) if window_open(order) else []
-    return ReturnWindow(can_return=bool(left), return_by=return_by(order), returnable=left)
+    if order.delivered_at is None:
+        status = "not_delivered"
+    elif not window_open(order):
+        status = "closed"  # 30 days passed, or the order was refunded in full
+    else:
+        status = "open"
+    left = returnable(db, order) if status == "open" else []
+    if status == "open" and not left:
+        status = "nothing_left"
+    return ReturnWindow(
+        status=status, can_return=bool(left), return_by=return_by(order), returnable=left
+    )
 
 
 # --- Output ------------------------------------------------------------------------------------

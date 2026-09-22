@@ -71,10 +71,27 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | ADM-02 / 02a | Stock adjustments with reasons and sign rules; never below 0; ledger with actor; **sum(ledger) == stock for every product** | `test_admin.py::TestStock`, `test_ledger_reconciles_for_every_product_after_orders`, `Admin.test.tsx`, `admin.spec.ts::restock, damage and the ledger` | I F E | Covered |
 | ADM-03 / 03a | Order list/search/detail; fulfil, cancel (restock + refund), refund delivered; system statuses refused; customer sees staff notes | `test_admin.py::TestOrders`, `test_checkout.py::TestLifecycleAndHistory`, `Admin.test.tsx`, `admin.spec.ts::orders` | I F E | Covered |
 | ADM-04 / 04a | Every admin route: anonymous 401, customer 403, admin allowed - enumerated from the OpenAPI spec; UI staff-only guard; demotion takes effect immediately | `test_admin.py::test_anonymous_gets_401` / `test_customer_gets_403` / `test_admin_is_let_through` (17 routes each), `test_me.py::TestRoleGuard`, `Admin.test.tsx`, `admin.spec.ts::access` | I F E | Covered |
-## Later milestones
+## Phase 2 (Milestone 8)
 
-| Req | Description | Tests | Status |
-|---|---|---|---|
+Layers: U unit, I integration (API + DB), F frontend (Vitest), E E2E (Playwright), B bug hunt.
+
+| Req | Description | Tests | Layers | Status |
+|---|---|---|---|---|
+| CPN-01 / 02 | Kinds, rounding, caps, discounted free-shipping threshold, never below $0 | `test_coupon_rules.py` (incl. Hypothesis total >= 0), `test_coupons.py::TestApplying` | U I | Covered |
+| CPN-03 | Every rejection reason, case-insensitive codes, placement re-checks, idempotency fingerprint | `test_coupons.py::TestRejections` / `TestRedemption`, `CheckoutCoupons.test.tsx`, `phase2.spec.ts::coupons` | I F E B | Covered |
+| CPN-04 | Uses given back on cancel/expiry; last use can't be taken twice | `test_coupons.py::test_cancelling_gives_the_use_back` / `test_expiry_gives...`, `api/phase2.spec.ts::race` | I E | Covered |
+| CPN time window | Starts at `starts_at`, gone at `expires_at` (to the second) | `test_coupons.py::TestTimeWindow` (frozen clock), `test_coupon_rules.py::TestState` | U I | Covered |
+| REV-01 | Delivered purchase only - each other status refused | `test_reviews.py::TestEligibility`, `ReviewsAndWishlist.test.tsx`, `api/phase2.spec.ts`, `isolated/phase2-global.spec.ts` | I F E B | Covered |
+| REV-02 / 04 | One per product, validation, edit/delete own, author privacy | `test_reviews.py::TestWriting` | I F | Covered |
+| REV-03 | Rating bookkeeping exact under any create/edit/delete sequence | `test_reviews.py::test_rating_bookkeeping_is_exact` (Hypothesis state machine) | I | Covered |
+| WSH-01..04 | Idempotent save/remove, limit 50, archived stays, move-to-cart keeps item on refusal | `test_wishlist.py`, `ReviewsAndWishlist.test.tsx`, `phase2.spec.ts::wishlist`, `api/phase2.spec.ts` | I F E | Covered |
+| RET-01 | Window to the second after delivery | `test_returns.py::TestWindow`, `isolated/phase2-global.spec.ts` | I E B | Covered |
+| RET-02 / 03 | Returnable quantities; the return state machine | `test_returns.py::TestRequesting` / `TestStateMachine`, `Returns.test.tsx`, `phase2.spec.ts::returns` | I F E | Covered |
+| RET-04 / 05 | Refund = paid share (cumulative); restock ledger; full return closes the order | `test_refunds.py` (Hypothesis: split returns sum exactly), `test_returns.py::TestRefundsAndStock`, `phase2.spec.ts` | U I E B | Covered |
+| RET-06 | Full refund refunds the rest; refused during an open return | `test_returns.py::TestFullRefundAfterReturns` | I | Covered |
+| EML-01..03 | Order and return emails; nothing sent for a refused change | `test_notifications.py`, `api/phase2.spec.ts::emails`, `phase2.spec.ts::returns` | I E | Covered |
+| ALR-01 | Low / out-of-stock alerts once per crossing, all admins, adjustments too | `test_notifications.py::TestLowStockAlerts` | I B | Covered |
+| ADM-05..07 | Coupons, review moderation, returns desk (all behind the admin guard: 28 routes) | `test_coupons.py::TestAdmin`, `test_reviews.py::TestModeration`, `test_admin.py` RBAC matrix, `AdminPhase2.test.tsx`, `phase2.spec.ts` | I F E | Covered |
 
 ## Non-functional
 
@@ -87,7 +104,8 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | NFR-SEC-03 | `pip-audit` + `npm audit` steps in `ci.yml`; ZAP API + baseline scans in `nightly.yml` | Covered (CI) |
 | NFR-QUAL-01 | Schemathesis over all 50 operations: no 500s, documented status codes only, content types and bodies match the spec (`test_contract.py`); derived 401/403/404/422 docs (`test_input_hardening.py::TestSpecDocumentsErrors`) | Covered |
 | NFR-PERF-01 | `backend/perf/locustfile.py` - fails the nightly job over the p95 / failure budget | Covered (nightly) |
-| NFR-TEST-01 | `scripts/bug_hunt.py`: 10 injected bugs, all caught (CI `bug-hunt` job); switch safety (`test_bug_injection.py`) | Covered |
+| NFR-SEC-04 | API CORP header (`test_health.py`, `api/phase2.spec.ts`); frontend headers in `vite.config.ts`, checked by the nightly ZAP web scan | Covered (nightly) |
+| NFR-TEST-01 | `scripts/bug_hunt.py`: 15 injected bugs (5 new in M8), all caught (CI `bug-hunt` job); switch safety (`test_bug_injection.py`) | Covered |
 | NFR-A11Y | `e2e/tests/a11y.spec.ts` - all public pages incl. filtered/empty results and product detail, a form in its error state, the account page | Covered (current pages) |
 | NFR-TEST | Reset + clock + email outbox endpoints (`test_test_support.py`, `e2e/tests/isolated/*`), never in prod (`test_test_support.py`, `test_config.py`) | Covered |
 
@@ -150,3 +168,13 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | 28 | Contract test | A body that isn't valid UTF-8 got an undocumented 400 in FastAPI's shape | `422 invalid_body` in our shape: `test_unreadable_body_is_422` |
 | 29 | Contract test | The spec listed only success + 422 (in FastAPI's `{"detail": [...]}` shape we never send): no 401/403/404/409 anywhere, so clients couldn't know them | Derived from each route's dependencies + route-specific codes, all with `ErrorResponse`: `TestSpecDocumentsErrors` |
 | 30 | Contract test (test design) | Fuzzing the test-support clock endpoint moved time forward mid-run and expired the admin's token - 78 false failures | Contract app built without test endpoints (they're not part of the contract) |
+
+## Defects found by the suites during Milestone 8
+
+| # | Found by | Defect | Fix + regression test |
+|---|---|---|---|
+| 31 | Nightly ZAP web scan (M7 follow-up) | The built frontend had no CSP, anti-clickjacking, nosniff or permissions headers; API responses had no Cross-Origin-Resource-Policy | Header set in `vite.config.ts` (preview + reference for hosting), CORP on the API: `test_health.py`, `api/phase2.spec.ts` |
+| 32 | Design review while building returns | A 30-day window keyed off the history row's timestamp would use the database's real clock, so time-travel tests (and the controllable clock) couldn't move it | `orders.delivered_at` set from `clock.now()`: `test_returns.py::TestWindow` |
+| 33 | Lint (oxlint `set-state-in-effect`) | Dropping a no-longer-valid coupon via an effect caused an extra render and could place with a stale code | Rejection handled inside the quote's query function; place-order sends the code the shown total was priced with: `CheckoutCoupons.test.tsx` |
+| 34 | E2E (`phase2.spec.ts::returns`) | Approving a return from the "Requested" queue refetched the list, the card left it, and its "Approved." confirmation vanished with it - staff got no feedback | Confirmations shown at page level: `AdminPhase2.test.tsx`, `phase2.spec.ts` |
+| 35 | E2E (isolated, time travel) | The order page decided "return window closed" from the *browser's* clock, so once the server's clock had passed 30 days it claimed everything had been returned (a shopper with a wrong device clock would see the same) | The server reports `return_window.status` (open / closed / nothing_left / not_delivered): `test_returns.py::TestWindow`, `Returns.test.tsx`, `isolated/phase2-global.spec.ts` |

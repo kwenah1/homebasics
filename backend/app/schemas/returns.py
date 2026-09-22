@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator
 
@@ -80,6 +80,8 @@ class Returnable(BaseModel):
 
 
 class ReturnWindow(BaseModel):
+    # Decided by the server's clock - never the browser's (found by the time-travel E2E test).
+    status: Literal["open", "not_delivered", "closed", "nothing_left"]
     can_return: bool
     return_by: datetime | None
     returnable: list[Returnable]

@@ -57,6 +57,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # NFR-SEC-04 (nightly ZAP): API responses are only for our own pages.
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         logger.info(
             "%s %s %s %.1fms",
             request.method,

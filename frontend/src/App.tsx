@@ -3,12 +3,16 @@ import { Route, Routes } from 'react-router-dom'
 import { RequireAdmin } from './auth/RequireAdmin'
 import { RequireAuth } from './auth/RequireAuth'
 import { AdminCategories } from './pages/admin/AdminCategories'
+import { AdminCoupons } from './pages/admin/AdminCoupons'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { AdminOrderDetail, AdminOrders } from './pages/admin/AdminOrders'
 import { AdminProductDetail, AdminProductNew, AdminProducts } from './pages/admin/AdminProducts'
+import { AdminReturns } from './pages/admin/AdminReturns'
+import { AdminReviews } from './pages/admin/AdminReviews'
 import { Layout } from './components/Layout'
 import { AccountPage } from './pages/account/AccountPage'
+import { WishlistPage } from './pages/account/WishlistPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
@@ -37,6 +41,7 @@ export function AppRoutes() {
         <Route path="cart" element={<CartPage />} />
         <Route element={<RequireAuth />}>
           <Route path="account" element={<AccountPage />} />
+          <Route path="wishlist" element={<WishlistPage />} />
           <Route path="checkout" element={<CheckoutPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/:orderNumber" element={<OrderDetailPage />} />
@@ -51,6 +56,9 @@ export function AppRoutes() {
             <Route path="categories" element={<AdminCategories />} />
             <Route path="orders" element={<AdminOrders />} />
             <Route path="orders/:orderNumber" element={<AdminOrderDetail />} />
+            <Route path="returns" element={<AdminReturns />} />
+            <Route path="coupons" element={<AdminCoupons />} />
+            <Route path="reviews" element={<AdminReviews />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />
