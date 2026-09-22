@@ -5,6 +5,7 @@ import math
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core import bugs
 from app.core.errors import AppError
 from app.models import Category, Product
 from app.schemas.catalog import (
@@ -31,13 +32,13 @@ def stock_status(stock_qty: int) -> tuple[StockStatus, int | None]:
     """CAT-05: 0 -> out of stock; 1..5 -> 'Only X left'; otherwise just 'in stock'."""
     if stock_qty <= 0:
         return "out_of_stock", None
-    if stock_qty <= LOW_STOCK_THRESHOLD:
+    if stock_qty <= LOW_STOCK_THRESHOLD - bugs.active("low_stock_threshold_off_by_one"):
         return "low_stock", stock_qty
     return "in_stock", None
 
 
 def max_order_qty(stock_qty: int) -> int:
-    return max(0, min(MAX_LINE_QTY, stock_qty))
+    return max(0, min(MAX_LINE_QTY + bugs.active("cart_allows_eleven"), stock_qty))
 
 
 def search_terms(q: str | None) -> list[str]:
@@ -49,6 +50,8 @@ def search_terms(q: str | None) -> list[str]:
 
 def escape_like(term: str) -> str:
     """Make %, _ and \\ literal inside a LIKE pattern (a '%' search must not match all)."""
+    if bugs.active("search_wildcards_unescaped"):
+        return term
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
@@ -78,6 +81,8 @@ _ORDER_BY = {
 
 
 def _visible() -> Select:
+    if bugs.active("archived_products_listed"):
+        return select(Product)
     return select(Product).where(Product.is_archived.is_(False))
 
 

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
+from app.core.openapi import document_errors
 from app.routers import admin, auth, cart, catalog, health, me, meta, orders, test_support
 
 API_PREFIX = "/api/v1"
@@ -21,6 +22,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=f"{API_PREFIX}/openapi.json",
         docs_url=f"{API_PREFIX}/docs",
     )
+
+    app.state.settings = settings  # per-app config (tests build apps with their own)
 
     app.add_middleware(
         CORSMiddleware,
@@ -52,17 +55,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     install_error_handlers(app)
-    app.include_router(health.router, prefix=API_PREFIX)
-    app.include_router(auth.router, prefix=API_PREFIX)
-    app.include_router(me.router, prefix=API_PREFIX)
-    app.include_router(meta.router, prefix=API_PREFIX)
-    app.include_router(catalog.router, prefix=API_PREFIX)
-    app.include_router(cart.router, prefix=API_PREFIX)
-    app.include_router(orders.checkout, prefix=API_PREFIX)
-    app.include_router(orders.orders, prefix=API_PREFIX)
-    app.include_router(admin.router, prefix=API_PREFIX)
+    app.include_router(document_errors(health.router), prefix=API_PREFIX)
+    app.include_router(document_errors(auth.router), prefix=API_PREFIX)
+    app.include_router(document_errors(me.router), prefix=API_PREFIX)
+    app.include_router(document_errors(meta.router), prefix=API_PREFIX)
+    app.include_router(document_errors(catalog.router), prefix=API_PREFIX)
+    app.include_router(document_errors(cart.router), prefix=API_PREFIX)
+    app.include_router(document_errors(orders.checkout), prefix=API_PREFIX)
+    app.include_router(document_errors(orders.orders), prefix=API_PREFIX)
+    app.include_router(document_errors(admin.router), prefix=API_PREFIX)
     if settings.test_endpoints_active:
-        app.include_router(test_support.router, prefix=API_PREFIX)
+        app.include_router(document_errors(test_support.router), prefix=API_PREFIX)
 
     return app
 

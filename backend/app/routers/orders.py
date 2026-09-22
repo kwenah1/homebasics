@@ -16,6 +16,7 @@ from app.schemas.checkout import (
     QuoteIn,
     QuoteOut,
 )
+from app.schemas.common import SafeStr
 from app.services import orders as order_service
 
 checkout = APIRouter(prefix="/checkout", tags=["checkout"])
@@ -43,7 +44,11 @@ def _mark_replay(response: Response, replayed: bool) -> None:
         response.headers["Idempotent-Replayed"] = "true"
 
 
-@checkout.post("/quote", response_model=QuoteOut)
+@checkout.post(
+    "/quote",
+    response_model=QuoteOut,
+    responses={404: {"description": "Address not found"}, 409: {"description": "Cart is empty"}},
+)
 def quote(data: QuoteIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """CHK-01..03: price the account cart for an address and shipping method. Read-only."""
     return order_service.build_quote(db, user, data)
@@ -53,7 +58,11 @@ def quote(data: QuoteIn, user: User = Depends(get_current_user), db: Session = D
     "/place-order",
     response_model=OrderOut,
     status_code=status.HTTP_201_CREATED,
-    responses={200: {"description": "Replay of an earlier request with this key"}},
+    responses={
+        200: {"description": "Replay of an earlier request with this key"},
+        404: {"description": "Address not found"},
+        409: {"description": "Cart empty, has issues, or the total changed since the quote"},
+    },
 )
 def place_order(
     data: PlaceOrderIn,
@@ -73,7 +82,7 @@ def place_order(
 
 @orders.get("", response_model=OrderPage)
 def list_orders(
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=10_000),
     page_size: int = Query(default=10, ge=1, le=50),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -83,7 +92,7 @@ def list_orders(
 
 @orders.get("/{order_number}", response_model=OrderOut)
 def get_order(
-    order_number: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    order_number: SafeStr, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     return order_service.get_order(db, user, order_number)
 
@@ -91,10 +100,13 @@ def get_order(
 @orders.post(
     "/{order_number}/pay",
     response_model=OrderOut,
-    responses={402: {"description": "Card declined (order stays payable)"}},
+    responses={
+        402: {"description": "Card declined (order stays payable)"},
+        409: {"description": "Order isn't awaiting payment (paid, cancelled or expired)"},
+    },
 )
 def pay(
-    order_number: str,
+    order_number: SafeStr,
     data: PayIn,
     key: IdempotencyKey,
     response: Response,
@@ -118,9 +130,13 @@ def pay(
     return order_service.order_out(db, order)
 
 
-@orders.post("/{order_number}/cancel", response_model=OrderOut)
+@orders.post(
+    "/{order_number}/cancel",
+    response_model=OrderOut,
+    responses={409: {"description": "Order can no longer be cancelled"}},
+)
 def cancel(
-    order_number: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    order_number: SafeStr, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """Customer cancellation, allowed until the order ships. Stock goes back; a paid order
     is refunded."""

@@ -6,6 +6,7 @@ from app.db import get_db
 from app.models import User
 from app.routers.auth import start_session
 from app.schemas.auth import TokenOut
+from app.schemas.types import PathId
 from app.schemas.user import (
     AddressIn,
     AddressOut,
@@ -36,7 +37,11 @@ def update_me(
     return user
 
 
-@router.post("/password", response_model=TokenOut)
+@router.post(
+    "/password",
+    response_model=TokenOut,
+    responses={400: {"description": "Current password wrong, or new password unchanged"}},
+)
 def change_password(
     data: PasswordChange,
     response: Response,
@@ -60,7 +65,12 @@ def list_addresses(user: User = Depends(get_current_user), db: Session = Depends
     return address_service.list_addresses(db, user)
 
 
-@router.post("/addresses", response_model=AddressOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/addresses",
+    response_model=AddressOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={409: {"description": "Address book full (ACC-05)"}},
+)
 def create_address(
     data: AddressIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
@@ -69,7 +79,7 @@ def create_address(
 
 @router.patch("/addresses/{address_id}", response_model=AddressOut)
 def update_address(
-    address_id: int,
+    address_id: PathId,
     data: AddressUpdate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -79,14 +89,14 @@ def update_address(
 
 @router.post("/addresses/{address_id}/default", response_model=AddressOut)
 def make_default(
-    address_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    address_id: PathId, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     return address_service.set_default(db, user, address_id)
 
 
 @router.delete("/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_address(
-    address_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    address_id: PathId, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> Response:
     address_service.delete_address(db, user, address_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

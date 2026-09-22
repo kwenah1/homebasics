@@ -17,6 +17,7 @@ ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
 "tests/**" = ["S101", "S105", "S106"]
 "app/seed/data.py" = ["E501", "S105"]  # tabular seed rows read better unwrapped
 "alembic/env.py" = ["I001"]
+"perf/**" = ["S311"]  # random picks a load mix, not a secret
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

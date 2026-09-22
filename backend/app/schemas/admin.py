@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from app.models import InventoryReason, OrderStatus
 from app.schemas.checkout import OrderOut
 from app.schemas.common import StrictModel
+from app.schemas.types import DbId
 
 # Pydantic checks the pattern BEFORE to_upper, so the pattern must accept either case.
 Sku = Annotated[
@@ -25,7 +26,7 @@ MAX_PRICE_CENTS = 1_000_000  # $10,000 - anything above is almost certainly a ty
 
 
 class ProductCreate(StrictModel):
-    category_id: int = Field(ge=1)
+    category_id: DbId
     sku: Sku
     name: ProductName
     description: Description = ""
@@ -37,7 +38,7 @@ class ProductUpdate(StrictModel):
     """SKU and slug never change (URLs and orders refer to them); stock changes only via
     stock adjustments so every unit is accounted for in the ledger (ADM-02)."""
 
-    category_id: int | None = Field(default=None, ge=1)
+    category_id: DbId | None = None
     name: ProductName | None = None
     description: Description | None = None
     price_cents: int | None = Field(default=None, ge=1, le=MAX_PRICE_CENTS)

@@ -56,6 +56,23 @@ cd ../e2e && npm install && npx playwright install chromium
 | E2E smoke / API only | `e2e> npm run test:smoke` / `npm run test:api` |
 | E2E global-state tests only | `e2e> npx playwright test --project=isolated --no-deps` |
 | E2E interactive | `e2e> npm run test:ui` |
+| Contract (Schemathesis, every operation) | `backend> .venv\Scripts\pytest tests/integration/test_contract.py` |
+| Bug hunt (each injected bug must fail the tests) | `backend> .venv\Scripts\python scripts/bug_hunt.py` |
+| Load test (API running, seeded) | `backend> .venv\Scripts\locust -f perf/locustfile.py --host http://localhost:8010 --headless -u 50 -r 10 -t 2m` |
+| Dependency audit | `backend> .venv\Scripts\pip-audit -r requirements.txt` / `frontend> npm audit --omit=dev` |
+
+`locust` isn't in `requirements-dev.txt` (it's heavy and only the nightly job needs it):
+`pip install locust`. The nightly workflow (`.github/workflows/nightly.yml`) runs the load
+test against a local Postgres - judge p95 there, not against Neon over the internet - plus
+OWASP ZAP scans of the API and the web app.
+
+### Bug injection
+
+`BUG_INJECTION=tax_on_shipping,cart_allows_eleven` switches on deliberate, realistic defects
+(listed with the rule each breaks in `backend/app/core/bug_catalog.py`) - handy for practising
+exploratory testing, or for checking a new test really fails when the rule breaks. Unknown names
+stop the app at startup; prod refuses any. Auth rate limiting is off outside prod unless
+`RATE_LIMIT_ENABLED=true`.
 
 ### E2E projects
 

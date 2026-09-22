@@ -69,6 +69,13 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        if exc.status_code == 400 and exc.detail == "There was an error parsing the body":
+            # Found by the contract test: a body that isn't even decodable (bad UTF-8) got an
+            # undocumented 400. It's invalid input like any other, so it's a documented 422.
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                content=error_body("invalid_body", "The request body could not be read."),
+            )
         code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "http_error")
         return JSONResponse(
             status_code=exc.status_code,

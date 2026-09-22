@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.catalog import CategoryRef, StockStatus
 from app.schemas.common import StrictModel
+from app.schemas.types import DbId
 
 MAX_LINE_QTY = 10  # CRT-01
 MAX_GUEST_LINES = 50
@@ -12,7 +13,7 @@ LineIssue = Literal["unavailable", "out_of_stock", "insufficient_stock"]
 
 
 class CartItemIn(StrictModel):
-    product_id: int = Field(ge=1)
+    product_id: DbId
     quantity: int = Field(default=1, ge=1, le=MAX_LINE_QTY)
 
 
@@ -23,7 +24,7 @@ class CartItemUpdate(StrictModel):
 class GuestItem(StrictModel):
     """One line of a browser-side guest cart (CRT-02)."""
 
-    product_id: int = Field(ge=1)
+    product_id: DbId
     quantity: int = Field(ge=1, le=MAX_LINE_QTY)
     # Price the guest saw when adding. Used ONLY to show a price-change notice - never to charge.
     price_cents_seen: int | None = Field(default=None, ge=0)

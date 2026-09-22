@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.sweep import release_expired_stock
 from app.db import get_db
 from app.schemas.catalog import CategoryOut, ProductDetail, ProductPage, ProductQuery
+from app.schemas.common import SafeStr
 from app.services import catalog as catalog_service
 
 router = APIRouter(tags=["catalog"], dependencies=[Depends(release_expired_stock)])
@@ -17,7 +18,9 @@ def list_categories(db: Session = Depends(get_db)) -> list[CategoryOut]:
     return catalog_service.list_categories(db)
 
 
-@router.get("/products", response_model=ProductPage)
+@router.get(
+    "/products", response_model=ProductPage, responses={404: {"description": "Unknown category"}}
+)
 def list_products(
     query: Annotated[ProductQuery, Query()], db: Session = Depends(get_db)
 ) -> ProductPage:
@@ -26,6 +29,6 @@ def list_products(
 
 
 @router.get("/products/{slug}", response_model=ProductDetail)
-def get_product(slug: str, db: Session = Depends(get_db)) -> ProductDetail:
+def get_product(slug: SafeStr, db: Session = Depends(get_db)) -> ProductDetail:
     """CAT-04. Archived or unknown products are 404."""
     return catalog_service.get_product(db, slug)

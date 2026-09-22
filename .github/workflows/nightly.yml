@@ -1,0 +1,85 @@
+name: Nightly - performance & security scan
+
+# Slow checks that don't belong on every PR: a Locust load test with a p95 budget
+# (NFR-PERF) and OWASP ZAP scans of the API and the web app (NFR-SEC).
+on:
+  schedule:
+    - cron: '17 6 * * *' # 06:17 UTC daily
+  workflow_dispatch:
+  pull_request: # ...and on any PR that changes the checks themselves
+    paths: ['.github/workflows/nightly.yml', 'backend/perf/**']
+
+env:
+  PYTHON_VERSION: '3.14'
+  NODE_VERSION: '22'
+  DATABASE_URL: postgresql+psycopg://homebasics:homebasics@localhost:5432/homebasics
+
+jobs:
+  perf-and-zap:
+    name: Locust p95 budget + ZAP scans
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: homebasics, POSTGRES_PASSWORD: homebasics, POSTGRES_DB: homebasics }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
+    env:
+      ENVIRONMENT: dev
+      JWT_SECRET: nightly-only-secret-not-used-in-production-00
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '${{ env.PYTHON_VERSION }}' }
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+
+      - name: API - install, migrate, seed, start
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt locust
+          .venv/bin/alembic upgrade head
+          .venv/bin/python -m app.seed.run
+          nohup .venv/bin/uvicorn app.main:app --port 8010 > ../api.log 2>&1 &
+          timeout 60 bash -c 'until curl -sf localhost:8010/api/v1/health; do sleep 1; done'
+
+      - name: Web - build and serve (vite preview proxies /api to 8010)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          nohup npx vite preview --port 4173 --strictPort > ../web.log 2>&1 &
+          timeout 60 bash -c 'until curl -sf localhost:4173 > /dev/null; do sleep 1; done'
+
+      - name: Locust - 50 users for 2 minutes, p95 < 300 ms (NFR-PERF)
+        working-directory: backend
+        run: >
+          mkdir -p ../reports &&
+          .venv/bin/locust -f perf/locustfile.py --host http://localhost:8010
+          --headless -u 50 -r 10 -t 2m --csv ../reports/locust --html ../reports/locust.html
+
+      - name: ZAP - API scan from the OpenAPI spec
+        if: always()
+        run: |
+          mkdir -p reports && chmod 777 reports
+          docker run --rm --network host -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py -t http://localhost:8010/api/v1/openapi.json -f openapi \
+            -r zap-api.html -J zap-api.json -I
+
+      - name: ZAP - baseline scan of the web app
+        if: always()
+        run: |
+          docker run --rm --network host -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:4173 -r zap-web.html -J zap-web.json -I
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nightly-reports
+          path: |
+            reports/
+            api.log
+            web.log
+          retention-days: 30

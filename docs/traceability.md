@@ -81,7 +81,13 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | Req | Tests | Status |
 |---|---|---|
 | NFR-OPS | `test_health.py`, `test_schema.py::test_migrations_match_models`, `e2e/tests/api/health.spec.ts` | Covered |
-| NFR-SEC | Security headers + CORS (`test_health.py`), prod guards (`test_config.py`), JWT attacks: alg=none, tampering, wrong type (`test_clock_and_tokens.py`, `test_auth_sessions.py`), mass assignment (`test_auth_register.py`, `api/auth.spec.ts`), IDOR (`test_addresses.py`, `api/auth.spec.ts`), open redirect (`validation.test.ts`, `auth.spec.ts`), httpOnly cookie (`auth.spec.ts`), uniform error shape (`api/auth.spec.ts`) | Partial - rate limiting in M7 |
+| NFR-SEC | Security headers + CORS (`test_health.py`), prod guards (`test_config.py`), JWT attacks: alg=none, tampering, wrong type (`test_clock_and_tokens.py`, `test_auth_sessions.py`), mass assignment (`test_auth_register.py`, `api/auth.spec.ts`), IDOR (`test_addresses.py`, `api/auth.spec.ts`), open redirect (`validation.test.ts`, `auth.spec.ts`), httpOnly cookie (`auth.spec.ts`), uniform error shape (`api/auth.spec.ts`) | Covered |
+| NFR-SEC-01 | Auth rate limits: 11th login is 429 + Retry-After, sliding window, blocked attempts don't count, rules independent, every limited route, off outside prod, can't be disabled in prod (`test_rate_limit.py`) | Covered |
+| NFR-SEC-02 | Out-of-range ids/pages, NUL bytes in body/query/path, undecodable body - all 422 (`test_input_hardening.py`); fuzzed across every operation (`test_contract.py`) | Covered |
+| NFR-SEC-03 | `pip-audit` + `npm audit` steps in `ci.yml`; ZAP API + baseline scans in `nightly.yml` | Covered (CI) |
+| NFR-QUAL-01 | Schemathesis over all 50 operations: no 500s, documented status codes only, content types and bodies match the spec (`test_contract.py`); derived 401/403/404/422 docs (`test_input_hardening.py::TestSpecDocumentsErrors`) | Covered |
+| NFR-PERF-01 | `backend/perf/locustfile.py` - fails the nightly job over the p95 / failure budget | Covered (nightly) |
+| NFR-TEST-01 | `scripts/bug_hunt.py`: 10 injected bugs, all caught (CI `bug-hunt` job); switch safety (`test_bug_injection.py`) | Covered |
 | NFR-A11Y | `e2e/tests/a11y.spec.ts` - all public pages incl. filtered/empty results and product detail, a form in its error state, the account page | Covered (current pages) |
 | NFR-TEST | Reset + clock + email outbox endpoints (`test_test_support.py`, `e2e/tests/isolated/*`), never in prod (`test_test_support.py`, `test_config.py`) | Covered |
 
@@ -133,3 +139,14 @@ small in-memory model. Any failing sequence is shrunk to the shortest reproducti
 | 22 | E2E (test design) | Admin tests that created products and categories in parallel broke the catalog tests' global counts (60 products / 10 per category / 6 categories) | Catalog-changing admin tests moved to the serial `isolated` project; parallel order test asserts its own ledger row, not a shared total |
 | 23 | E2E (test infrastructure) | One failed run left stray data, because Playwright **skips dependent projects** after a failure, so the isolated project's cleanup never ran; every later run started dirty | `setup` project resets the DB at the *start* of every run; all projects depend on it |
 | 24 | E2E | The New-product form could be submitted before its category list loaded, sending no category | Save disabled until categories load: `isolated/admin-catalog.spec.ts::duplicate SKU...` |
+
+## Defects found by the suites during Milestone 7
+
+| # | Found by | Defect | Fix + regression test |
+|---|---|---|---|
+| 25 | Contract test (Schemathesis) | An id above 2^31-1 in a path, query or body (e.g. `/me/addresses/3796841830`) reached Postgres as an `integer` and failed "out of range" - a 500 | Ids bounded to the column range (`schemas/types.py`), 422: `test_input_hardening.py::test_out_of_range_*` |
+| 26 | Contract test | A huge `page` on the admin and order lists became an OFFSET psycopg couldn't send - a 500 | `page <= 10 000` like the catalog: `test_out_of_range_numbers_are_422_not_500` |
+| 27 | Contract test | A NUL byte in any text input (names, search, slugs) - Postgres text can't hold one - a 500 | Rejected at the edge for every body, query and path string: `test_nul_bytes_are_422_not_500`, `test_nul_in_a_path_is_422` |
+| 28 | Contract test | A body that isn't valid UTF-8 got an undocumented 400 in FastAPI's shape | `422 invalid_body` in our shape: `test_unreadable_body_is_422` |
+| 29 | Contract test | The spec listed only success + 422 (in FastAPI's `{"detail": [...]}` shape we never send): no 401/403/404/409 anywhere, so clients couldn't know them | Derived from each route's dependencies + route-specific codes, all with `ErrorResponse`: `TestSpecDocumentsErrors` |
+| 30 | Contract test (test design) | Fuzzing the test-support clock endpoint moved time forward mid-run and expired the admin's token - 78 false failures | Contract app built without test endpoints (they're not part of the contract) |

@@ -39,6 +39,15 @@ def _reset_clock():
     clock.reset()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    from app.core.rate_limit import limiter
+
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 @pytest.fixture
 def frozen_clock():
     """Stop time so only explicit travel() moves it.

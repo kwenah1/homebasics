@@ -25,6 +25,8 @@ from app.schemas.admin import (
     StockAdjustment,
     StockLedger,
 )
+from app.schemas.common import SafeStr
+from app.schemas.types import PathId, QueryId
 from app.services import admin as admin_service
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -40,10 +42,10 @@ def summary(db: Session = Depends(get_db)):
 
 @router.get("/products", response_model=AdminProductPage)
 def list_products(
-    q: str | None = Query(default=None, max_length=100),
-    category_id: int | None = Query(default=None, ge=1),
+    q: SafeStr | None = Query(default=None, max_length=100),
+    category_id: QueryId = None,
     archived: Literal["all", "active", "archived"] = "all",
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=10_000),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
@@ -52,7 +54,12 @@ def list_products(
     )
 
 
-@router.post("/products", response_model=AdminProductOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/products",
+    response_model=AdminProductOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={409: {"description": "SKU or name already used"}},
+)
 def create_product(
     data: ProductCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
@@ -60,28 +67,36 @@ def create_product(
 
 
 @router.get("/products/{product_id}", response_model=AdminProductOut)
-def get_product(product_id: int, db: Session = Depends(get_db)):
+def get_product(product_id: PathId, db: Session = Depends(get_db)):
     return admin_service.get_product(db, product_id)
 
 
-@router.patch("/products/{product_id}", response_model=AdminProductOut)
-def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db)):
+@router.patch(
+    "/products/{product_id}",
+    response_model=AdminProductOut,
+    responses={409: {"description": "Name already used"}},
+)
+def update_product(product_id: PathId, data: ProductUpdate, db: Session = Depends(get_db)):
     return admin_service.update_product(db, product_id, data)
 
 
 @router.post("/products/{product_id}/archive", response_model=AdminProductOut)
-def archive(product_id: int, db: Session = Depends(get_db)):
+def archive(product_id: PathId, db: Session = Depends(get_db)):
     return admin_service.set_archived(db, product_id, True)
 
 
 @router.post("/products/{product_id}/unarchive", response_model=AdminProductOut)
-def unarchive(product_id: int, db: Session = Depends(get_db)):
+def unarchive(product_id: PathId, db: Session = Depends(get_db)):
     return admin_service.set_archived(db, product_id, False)
 
 
-@router.post("/products/{product_id}/stock-adjustments", response_model=AdminProductOut)
+@router.post(
+    "/products/{product_id}/stock-adjustments",
+    response_model=AdminProductOut,
+    responses={409: {"description": "Would take stock below zero"}},
+)
 def adjust_stock(
-    product_id: int,
+    product_id: PathId,
     data: StockAdjustment,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -91,7 +106,7 @@ def adjust_stock(
 
 
 @router.get("/products/{product_id}/stock-movements", response_model=StockLedger)
-def stock_movements(product_id: int, db: Session = Depends(get_db)):
+def stock_movements(product_id: PathId, db: Session = Depends(get_db)):
     return admin_service.stock_ledger(db, product_id)
 
 
@@ -103,18 +118,31 @@ def list_categories(db: Session = Depends(get_db)):
     return admin_service.list_categories(db)
 
 
-@router.post("/categories", response_model=AdminCategoryOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/categories",
+    response_model=AdminCategoryOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={409: {"description": "Name already used"}},
+)
 def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     return admin_service.create_category(db, data)
 
 
-@router.patch("/categories/{category_id}", response_model=AdminCategoryOut)
-def update_category(category_id: int, data: CategoryUpdate, db: Session = Depends(get_db)):
+@router.patch(
+    "/categories/{category_id}",
+    response_model=AdminCategoryOut,
+    responses={409: {"description": "Name already used"}},
+)
+def update_category(category_id: PathId, data: CategoryUpdate, db: Session = Depends(get_db)):
     return admin_service.update_category(db, category_id, data)
 
 
-@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_category(category_id: int, db: Session = Depends(get_db)):
+@router.delete(
+    "/categories/{category_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={409: {"description": "Category still has products"}},
+)
+def delete_category(category_id: PathId, db: Session = Depends(get_db)):
     admin_service.delete_category(db, category_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -125,8 +153,8 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
 @router.get("/orders", response_model=AdminOrderPage)
 def list_orders(
     status_filter: OrderStatus | None = Query(default=None, alias="status"),
-    q: str | None = Query(default=None, max_length=100, description="Order number or email"),
-    page: int = Query(default=1, ge=1),
+    q: SafeStr | None = Query(default=None, max_length=100, description="Order number or email"),
+    page: int = Query(default=1, ge=1, le=10_000),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
@@ -134,13 +162,17 @@ def list_orders(
 
 
 @router.get("/orders/{order_number}", response_model=AdminOrderOut)
-def get_order(order_number: str, db: Session = Depends(get_db)):
+def get_order(order_number: SafeStr, db: Session = Depends(get_db)):
     return admin_service.get_order(db, order_number)
 
 
-@router.post("/orders/{order_number}/status", response_model=AdminOrderOut)
+@router.post(
+    "/orders/{order_number}/status",
+    response_model=AdminOrderOut,
+    responses={409: {"description": "Transition not allowed from the current status"}},
+)
 def change_status(
-    order_number: str,
+    order_number: SafeStr,
     data: AdminStatusChange,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -150,9 +182,13 @@ def change_status(
     return admin_service.change_status(db, admin, order_number, data.to, data.note)
 
 
-@router.post("/orders/{order_number}/refund", response_model=AdminOrderOut)
+@router.post(
+    "/orders/{order_number}/refund",
+    response_model=AdminOrderOut,
+    responses={409: {"description": "Order can't be refunded in its current status"}},
+)
 def refund(
-    order_number: str,
+    order_number: SafeStr,
     data: RefundIn,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
