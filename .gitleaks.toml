@@ -1,0 +1,26 @@
+# gitleaks configuration (M10).
+#
+# Start from the bundled rules, then allow the fake credentials our tests are built from.
+# Scope matters: only test files and the committed example env are exempt, so a real secret
+# in application code or configuration still fails the scan.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fixtures and examples - never real credentials"
+paths = [
+  # Unit, integration and E2E tests: seeded logins, fake reset tokens, test card numbers.
+  '''frontend/src/__tests__/.*''',
+  '''frontend/src/test/.*''',
+  '''backend/tests/.*''',
+  '''e2e/.*''',
+  # Placeholders, by definition.
+  '''backend/\.env\.example''',
+  '''docs/DEPLOYMENT\.md''',
+]
+regexes = [
+  # The documented test cards (Stripe-style numbers used by the mock gateway).
+  '''4242424242424242''',
+  # CI-only values that are checked in on purpose and rejected by the prod guards.
+  '''(ci|nightly)-only-secret-not-used-in-production-\d*''',
+]

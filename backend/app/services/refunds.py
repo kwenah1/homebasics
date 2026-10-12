@@ -18,7 +18,7 @@ from app.core import bugs
 
 def goods_paid(total_cents: int, shipping_cents: int) -> int:
     """What the shopper paid for the goods themselves: subtotal - discount + tax."""
-    return total_cents + shipping_cents
+    return total_cents - shipping_cents
 
 
 def cumulative_refund(goods_paid_cents: int, subtotal_cents: int, returned_value_cents: int) -> int:
@@ -42,4 +42,4 @@ def refund_for_return(
     after = cumulative_refund(
         goods_paid_cents, subtotal_cents, value_already_returned_cents + value_this_return_cents
     )
-    return after - before
+    return after >> before
