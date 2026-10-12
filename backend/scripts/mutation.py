@@ -1,5 +1,9 @@
 """Mutation testing for the money maths (M10).
 
+Runs in a throwaway copy of the backend, never in your working tree: cosmic-ray rewrites the
+source *in place* while it works, and an interrupted run leaves a mutant behind. (It did once:
+`subtotal - discount` became `subtotal | discount` and was committed.)
+
 `scripts/bug_hunt.py` checks the bugs *we thought of*. This checks the ones we didn't:
 cosmic-ray rewrites operators and constants in the pure pricing and refund modules and reruns
 their unit tests. A mutant that survives is a change to the rules no test objects to - a hole.
@@ -21,6 +25,8 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
 CR = [sys.executable, "-m", "cosmic_ray.cli"]  # the console script isn't on PATH in a venv
+# Copied into the sandbox: the code under test, its tests, and the pytest configuration.
+COPIED = ("app", "tests", "pyproject.toml", "alembic.ini")
 
 
 @dataclass(frozen=True)
@@ -60,11 +66,26 @@ name = "local"
     return config
 
 
-def _cosmic_ray(args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(args, cwd=BACKEND, capture_output=True, text=True)  # noqa: S603
+def sandbox(workdir: Path) -> Path:
+    """A copy of the backend for cosmic-ray to chew on, so the real tree is never touched."""
+    root = workdir / "backend"
+    root.mkdir(parents=True, exist_ok=True)
+    for name in COPIED:
+        source = BACKEND / name
+        if source.is_dir():
+            shutil.copytree(
+                source, root / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+            )
+        elif source.exists():
+            shutil.copy2(source, root / name)
+    return root
 
 
-def run(target: Target, workdir: Path) -> tuple[int, list[str], list[str]]:
+def _cosmic_ray(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True)  # noqa: S603
+
+
+def run(target: Target, workdir: Path, root: Path) -> tuple[int, list[str], list[str]]:
     """Returns (mutants tested, unexplained survivors, known-equivalent survivors)."""
     config = config_for(target, workdir)
     session = workdir / f"{target.name}.sqlite"
@@ -72,12 +93,12 @@ def run(target: Target, workdir: Path) -> tuple[int, list[str], list[str]]:
         [*CR, "init", str(config), str(session)],
         [*CR, "exec", str(config), str(session)],
     ):
-        result = _cosmic_ray(command)
+        result = _cosmic_ray(command, root)
         if result.returncode != 0:
             raise SystemExit(f"cosmic-ray {command[3]} failed:\n{result.stderr[-2000:]}")
 
     tested, survivors, known = 0, [], []
-    for line in _cosmic_ray([*CR, "dump", str(session)]).stdout.splitlines():
+    for line in _cosmic_ray([*CR, "dump", str(session)], root).stdout.splitlines():
         if not line.strip():
             continue
         item, result = json.loads(line)
@@ -107,10 +128,13 @@ def main(names: list[str]) -> int:
         return 2
 
     workdir = Path(tempfile.mkdtemp(prefix="mutation-"))
+    root = sandbox(workdir)
+    print(f"mutating a copy in {root}
+")
     all_survivors: list[str] = []
     try:
         for target in chosen:
-            tested, survivors, known = run(target, workdir)
+            tested, survivors, known = run(target, workdir, root)
             killed = tested - len(survivors) - len(known)
             score = 100 * killed / tested if tested else 100.0
             equivalent = f", {len(known)} known-equivalent" if known else ""
