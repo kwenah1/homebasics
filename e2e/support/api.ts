@@ -174,6 +174,49 @@ export class Api {
       await check(await this.request.post(`${base}/${change.is_archived ? 'archive' : 'unarchive'}`, { headers }))
     }
   }
+
+  // --- Phase 2 (M8) ---------------------------------------------------------------------------
+
+  async createCoupon(body: Record<string, unknown>) {
+    const response = await this.request.post(`${API_URL}/api/v1/admin/coupons`, {
+      headers: await this.admin(),
+      data: { kind: 'percent', percent_off: 10, per_user_limit: 5, ...body },
+    })
+    if (response.status() !== 201) throw new Error(`create coupon failed: ${await response.text()}`)
+    return response.json()
+  }
+
+  /** Buy through the real checkout API (cart -> quote -> place -> pay) and, as staff, walk the
+   *  order to DELIVERED. Returns the order number. */
+  async buyAndDeliver(user: TestUser, slug: string, quantity: number, opts: { deliver?: boolean } = {}) {
+    const headers = await this.authHeader(user)
+    await this.addToAccountCart(user, slug, quantity)
+    const addresses = await (await this.request.get(`${API_URL}/api/v1/me/addresses`, { headers })).json()
+    const address_id = addresses[0]?.id ?? (await this.addAddress(user))
+    const quote = await (
+      await this.request.post(`${API_URL}/api/v1/checkout/quote`, { headers, data: { address_id } })
+    ).json()
+    const placed = await this.request.post(`${API_URL}/api/v1/checkout/place-order`, {
+      headers: { ...headers, 'Idempotency-Key': `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` },
+      data: { address_id, expected_total_cents: quote.total_cents },
+    })
+    if (placed.status() !== 201) throw new Error(`place failed: ${await placed.text()}`)
+    const { order_number } = await placed.json()
+    const paid = await this.request.post(`${API_URL}/api/v1/orders/${order_number}/pay`, {
+      headers: { ...headers, 'Idempotency-Key': `e2e-pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
+      data: { card_number: '4242424242424242', exp_month: 12, exp_year: 2035, cvc: '123', name_on_card: 'E2E' },
+    })
+    if (!paid.ok()) throw new Error(`pay failed: ${await paid.text()}`)
+    if (opts.deliver !== false) {
+      for (const to of ['processing', 'shipped', 'delivered'] as const) await this.setOrderStatus(order_number, to)
+    }
+    return order_number as string
+  }
+
+  async emailsTo(to: string, limit = 20): Promise<{ subject: string; body: string }[]> {
+    const response = await this.request.get(`${API_URL}/api/v1/test/emails`, { params: { to, limit } })
+    return response.json()
+  }
 }
 
 export const ADMIN_USER: TestUser = {

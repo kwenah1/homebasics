@@ -1,78 +1,21 @@
 """CHK-01..08 and ORD-01..03 end to end through the API (real Postgres)."""
 
-import uuid
-
 import pytest
 from sqlalchemy import func, select
 
-from app.models import InventoryMovement, Order, Payment, Product
+from app.models import InventoryMovement, Order, Payment
 from app.services.payments import DECLINED_CARD, INSUFFICIENT_FUNDS_CARD, SUCCESS_CARD
 from tests.helpers import VALID_ADDRESS, error_code, refresh_session, travel
-
-QUOTE = "/api/v1/checkout/quote"
-PLACE = "/api/v1/checkout/place-order"
-CARD = {
-    "card_number": SUCCESS_CARD,
-    "exp_month": 12,
-    "exp_year": 2035,
-    "cvc": "123",
-    "name_on_card": "Casey Customer",
-}
-
-
-def key() -> str:
-    return uuid.uuid4().hex
-
-
-@pytest.fixture
-def products(db):
-    return {p.sku: p for p in db.scalars(select(Product))}
-
-
-@pytest.fixture
-def address(client, customer):
-    """Default Texas address for the signed-in customer."""
-    return client.post("/api/v1/me/addresses", json=VALID_ADDRESS).json()
-
-
-def add(client, product, qty=1):
-    assert (
-        client.post(
-            "/api/v1/cart/items", json={"product_id": product.id, "quantity": qty}
-        ).status_code
-        == 200
-    )
-
-
-def quote(client, address, method="standard"):
-    return client.post(QUOTE, json={"address_id": address["id"], "shipping_method": method}).json()
-
-
-def place(client, address, method="standard", *, idem=None, expected=None):
-    if expected is None:
-        expected = quote(client, address, method)["total_cents"]
-    return client.post(
-        PLACE,
-        json={
-            "address_id": address["id"],
-            "shipping_method": method,
-            "expected_total_cents": expected,
-        },
-        headers={"Idempotency-Key": idem or key()},
-    )
-
-
-def pay(client, number, card=None, *, idem=None, **overrides):
-    return client.post(
-        f"/api/v1/orders/{number}/pay",
-        json={**CARD, **({"card_number": card} if card else {}), **overrides},
-        headers={"Idempotency-Key": idem or key()},
-    )
-
-
-def stock(db, product):
-    db.refresh(product)
-    return product.stock_qty
+from tests.integration.checkout_support import (
+    PLACE,
+    QUOTE,
+    add,
+    key,
+    pay,
+    place,
+    quote,
+    stock,
+)
 
 
 class TestQuote:
@@ -249,12 +192,6 @@ class TestPlaceOrder:
 
     def test_requires_sign_in(self, client):
         assert client.post(PLACE, json={}, headers={"Idempotency-Key": key()}).status_code == 401
-
-
-@pytest.fixture
-def pending(client, address, products):
-    add(client, products["KIT-001"], 2)
-    return place(client, address).json()
 
 
 class TestPay:

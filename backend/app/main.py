@@ -8,7 +8,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
 from app.core.openapi import document_errors
-from app.routers import admin, auth, cart, catalog, health, me, meta, orders, test_support
+from app.routers import (
+    admin,
+    auth,
+    cart,
+    catalog,
+    health,
+    me,
+    meta,
+    orders,
+    returns,
+    reviews,
+    test_support,
+    wishlist,
+)
 
 API_PREFIX = "/api/v1"
 logger = logging.getLogger("homebasics.request")
@@ -44,6 +57,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # NFR-SEC-04 (nightly ZAP): API responses are only for our own pages.
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         logger.info(
             "%s %s %s %.1fms",
             request.method,
@@ -58,11 +73,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(document_errors(health.router), prefix=API_PREFIX)
     app.include_router(document_errors(auth.router), prefix=API_PREFIX)
     app.include_router(document_errors(me.router), prefix=API_PREFIX)
+    app.include_router(document_errors(wishlist.router), prefix=API_PREFIX)
     app.include_router(document_errors(meta.router), prefix=API_PREFIX)
     app.include_router(document_errors(catalog.router), prefix=API_PREFIX)
+    app.include_router(document_errors(reviews.router), prefix=API_PREFIX)
     app.include_router(document_errors(cart.router), prefix=API_PREFIX)
     app.include_router(document_errors(orders.checkout), prefix=API_PREFIX)
     app.include_router(document_errors(orders.orders), prefix=API_PREFIX)
+    app.include_router(document_errors(returns.router), prefix=API_PREFIX)
     app.include_router(document_errors(admin.router), prefix=API_PREFIX)
     if settings.test_endpoints_active:
         app.include_router(document_errors(test_support.router), prefix=API_PREFIX)

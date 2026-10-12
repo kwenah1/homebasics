@@ -77,6 +77,9 @@ class Order(TimestampMixin, Base):
     )
     # ORD: PENDING_PAYMENT orders expire after 30 minutes and restock inventory.
     payment_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # RET-01: the 30-day return window runs from here (set from the controllable clock).
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    coupon_code: Mapped[str | None] = mapped_column(String(20))  # CPN: snapshot for display
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"

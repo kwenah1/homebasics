@@ -18,7 +18,7 @@ def test_reset_restores_seed_data(client, db):
     assert response.status_code == 200
     assert response.json() == {
         "reset": True,
-        "seeded": {"tax_rates": 51, "users": 3, "categories": 6, "products": 61},
+        "seeded": {"tax_rates": 51, "users": 3, "categories": 6, "products": 61, "coupons": 3},
     }
     db.expire_all()
     pan = db.scalar(select(Product).where(Product.sku == "KIT-001"))

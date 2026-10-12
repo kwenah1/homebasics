@@ -35,8 +35,9 @@ from app.schemas.admin import (
     StockLedger,
 )
 from app.seed.run import slugify
-from app.services import order_state
+from app.services import notifications, order_state
 from app.services import orders as order_service
+from app.services import returns as return_service
 from app.services.catalog import LOW_STOCK_THRESHOLD, escape_like
 from app.services.order_state import Actor
 
@@ -204,7 +205,9 @@ def adjust_stock(
             f"Only {product.stock_qty} in stock; can't remove {-data.delta}.",
             extra={"available": product.stock_qty},
         )
+    before = product.stock_qty
     product.stock_qty = Product.stock_qty + data.delta  # relative update (see orders.py)
+    notifications.stock_changed(db, product, before, before + data.delta)
     db.add(
         InventoryMovement(
             product_id=product.id,
@@ -427,6 +430,7 @@ def get_order(db: Session, number: str) -> AdminOrderOut:
 
 
 def _refund_payment(db: Session, order: Order) -> bool:
+    """Refund whatever hasn't been refunded yet (returns may already have refunded part)."""
     paid = db.scalar(
         select(Payment).where(
             Payment.order_id == order.id, Payment.status == PaymentStatus.SUCCEEDED
@@ -434,15 +438,22 @@ def _refund_payment(db: Session, order: Order) -> bool:
     )
     if paid is None:
         return False
-    db.add(
-        Payment(
-            order_id=order.id,
-            idempotency_key=f"refund:{order.id}",
-            amount_cents=paid.amount_cents,
-            status=PaymentStatus.REFUNDED,
-            card_last4=paid.card_last4,
+    refunded = db.scalar(
+        select(func.coalesce(func.sum(Payment.amount_cents), 0)).where(
+            Payment.order_id == order.id, Payment.status == PaymentStatus.REFUNDED
         )
     )
+    remaining = paid.amount_cents - refunded
+    if remaining > 0:
+        db.add(
+            Payment(
+                order_id=order.id,
+                idempotency_key=f"refund:{order.id}",
+                amount_cents=remaining,
+                status=PaymentStatus.REFUNDED,
+                card_last4=paid.card_last4,
+            )
+        )
     return True
 
 
@@ -469,9 +480,15 @@ def change_status(
 
 
 def refund(db: Session, admin: User, number: str, note: str | None) -> AdminOrderOut:
-    """Delivered -> refunded (goods kept by the customer; returns with restock are Phase 2)."""
+    """Delivered -> refunded, goods kept by the customer. Refunds what returns haven't."""
     order = _order_for_update(db, number)
     order_state.check(order.status, OrderStatus.REFUNDED, Actor.ADMIN)
+    if return_service.has_open_return(db, order.id):
+        raise AppError(
+            409,
+            "return_in_progress",
+            "Finish (receive, reject or cancel) the open return before refunding the order.",
+        )
     _refund_payment(db, order)
     order_service.transition(
         db,

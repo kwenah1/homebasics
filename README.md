@@ -108,5 +108,18 @@ product, and these users:
 Seed products deliberately sit on rule boundaries (stock 0/1/5/6, prices $49.99/$50.00) -
 see `backend/app/seed/data.py`.
 
+Seed coupons (CPN):
+
+| Code | What | Use it to test |
+|---|---|---|
+| `WELCOME10` | 10% off, once per customer | the discount, then "already used" |
+| `SAVE5` | $5 off orders of $30+ | minimum spend (and losing free shipping) |
+| `SPRING25` | 25%, ended 1 June 2026 | "expired" |
+
+Phase 2 journeys need a *delivered* order (reviews, returns). Staff move an order there in
+the back office (Orders -> Processing -> Shipped -> Delivered); E2E tests use
+`api.buyAndDeliver()`. Order, return and low-stock emails land in the outbox:
+`GET /api/v1/test/emails?to=...`.
+
 ⚠️ Backend integration tests **drop and rebuild** the schema in `TEST_DATABASE_URL`.
 Never point it at a database you care about.

@@ -42,6 +42,7 @@ def test_security_headers(client):
     headers = client.get("/api/v1/health").headers
     assert headers["X-Content-Type-Options"] == "nosniff"
     assert headers["X-Frame-Options"] == "DENY"
+    assert headers["Cross-Origin-Resource-Policy"] == "same-origin"
 
 
 def test_cors_allows_frontend_origin(client):

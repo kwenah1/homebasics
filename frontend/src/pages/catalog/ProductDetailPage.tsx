@@ -7,6 +7,8 @@ import { useCart } from '../../cart/CartContext'
 import { CartLimitError } from '../../cart/guestCart'
 import { ProductImage, Rating, StockBadge } from '../../components/catalog'
 import { FormAlert } from '../../components/form'
+import { ReviewsSection } from '../../components/Reviews'
+import { WishlistButton } from '../../components/WishlistButton'
 import { formatCents } from '../../lib/money'
 import { NotFoundPage } from '../NotFoundPage'
 
@@ -105,6 +107,7 @@ export function ProductDetailPage() {
             >
               {soldOut ? 'Out of stock' : adding ? 'Adding…' : 'Add to cart'}
             </button>
+            <WishlistButton productId={product.id} />
           </div>
           {inCart > 0 && (
             <p className="text-sm text-stone-600" data-testid="in-cart">
@@ -127,6 +130,8 @@ export function ProductDetailPage() {
           )}
         </div>
       </div>
+
+      <ReviewsSection slug={product.slug} />
     </article>
   )
 }

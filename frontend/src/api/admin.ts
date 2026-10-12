@@ -1,5 +1,7 @@
 import { apiFetch } from './client'
 import type { Order, OrderStatus } from './orders'
+import type { AdminReturn, ReturnStatus } from './returns'
+import type { Review } from './reviews'
 
 export interface AdminProduct {
   id: number
@@ -65,6 +67,34 @@ export interface AdminSummary {
 
 export type AdjustReason = 'restock' | 'adjustment' | 'damaged'
 
+export type CouponState = 'scheduled' | 'active' | 'expired' | 'exhausted' | 'disabled'
+
+export interface Coupon {
+  id: number
+  code: string
+  description: string
+  kind: 'percent' | 'fixed'
+  percent_off: number | null
+  amount_off_cents: number | null
+  min_subtotal_cents: number
+  starts_at: string | null
+  expires_at: string | null
+  max_redemptions: number | null
+  per_user_limit: number
+  is_active: boolean
+  uses: number
+  state: CouponState
+}
+
+export type CouponInput = Omit<Coupon, 'id' | 'uses' | 'state'>
+
+export interface AdminReview extends Review {
+  product_id: number
+  product_name: string
+  product_slug: string
+  author_email: string
+}
+
 type Page<T> = { items: T[]; total: number; page: number; page_size: number }
 
 const opts = { auth: true } as const
@@ -111,4 +141,21 @@ export const adminApi = {
     apiFetch<AdminOrder>(`/admin/orders/${number}/status`, { ...opts, method: 'POST', json: { to, note } }),
   refund: (number: string, note?: string) =>
     apiFetch<AdminOrder>(`/admin/orders/${number}/refund`, { ...opts, method: 'POST', json: { note } }),
+
+  coupons: () => apiFetch<Coupon[]>('/admin/coupons', opts),
+  createCoupon: (body: Partial<CouponInput>) =>
+    apiFetch<Coupon>('/admin/coupons', { ...opts, method: 'POST', json: body }),
+  updateCoupon: (id: number, body: Partial<Omit<CouponInput, 'code' | 'kind' | 'percent_off' | 'amount_off_cents'>>) =>
+    apiFetch<Coupon>(`/admin/coupons/${id}`, { ...opts, method: 'PATCH', json: body }),
+
+  returns: (status?: ReturnStatus) => apiFetch<AdminReturn[]>(`/admin/returns${qs({ status })}`, opts),
+  approveReturn: (rn: string, note?: string) =>
+    apiFetch<AdminReturn>(`/admin/returns/${rn}/approve`, { ...opts, method: 'POST', json: { note } }),
+  rejectReturn: (rn: string, note: string) =>
+    apiFetch<AdminReturn>(`/admin/returns/${rn}/reject`, { ...opts, method: 'POST', json: { note } }),
+  receiveReturn: (rn: string, restock: boolean, note?: string) =>
+    apiFetch<AdminReturn>(`/admin/returns/${rn}/receive`, { ...opts, method: 'POST', json: { restock, note } }),
+
+  reviews: (page = 1) => apiFetch<Page<AdminReview>>(`/admin/reviews${qs({ page })}`, opts),
+  deleteReview: (id: number) => apiFetch<void>(`/admin/reviews/${id}`, { ...opts, method: 'DELETE' }),
 }

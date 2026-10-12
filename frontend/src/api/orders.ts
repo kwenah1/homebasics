@@ -19,6 +19,7 @@ export interface Quote {
   item_count: number
   subtotal_cents: number
   discount_cents: number
+  coupon: AppliedCoupon | null
   tax_rate: number
   tax_state: string
   tax_cents: number
@@ -30,11 +31,25 @@ export interface Quote {
   blocking_reason: string | null
 }
 
+export interface AppliedCoupon {
+  code: string
+  description: string
+  discount_cents: number
+}
+
+export interface Returnable {
+  product_id: number
+  sku: string
+  product_name: string
+  quantity: number
+}
+
 export interface Order {
   order_number: string
   status: OrderStatus
   placed_at: string
   payment_expires_at: string | null
+  delivered_at: string | null
   shipping_method: ShippingMethod
   ship_to: { name: string; line1: string; line2: string | null; city: string; state: string; postal_code: string }
   items: {
@@ -47,6 +62,7 @@ export interface Order {
   }[]
   subtotal_cents: number
   discount_cents: number
+  coupon_code: string | null
   tax_rate: number
   tax_cents: number
   shipping_cents: number
@@ -61,6 +77,12 @@ export interface Order {
   }[]
   can_pay: boolean
   can_cancel: boolean
+  return_window: {
+    status: 'open' | 'not_delivered' | 'closed' | 'nothing_left'
+    can_return: boolean
+    return_by: string | null
+    returnable: Returnable[]
+  }
 }
 
 export interface OrderSummary {
@@ -80,10 +102,19 @@ export interface CardDetails {
 }
 
 export const orderApi = {
-  quote: (address_id: number, shipping_method: ShippingMethod) =>
-    apiFetch<Quote>('/checkout/quote', { method: 'POST', json: { address_id, shipping_method }, auth: true }),
+  quote: (address_id: number, shipping_method: ShippingMethod, coupon_code?: string | null) =>
+    apiFetch<Quote>('/checkout/quote', {
+      method: 'POST',
+      json: { address_id, shipping_method, ...(coupon_code ? { coupon_code } : {}) },
+      auth: true,
+    }),
   place: (
-    body: { address_id: number; shipping_method: ShippingMethod; expected_total_cents: number },
+    body: {
+      address_id: number
+      shipping_method: ShippingMethod
+      expected_total_cents: number
+      coupon_code?: string
+    },
     idempotencyKey: string,
   ) =>
     apiFetch<Order>('/checkout/place-order', {

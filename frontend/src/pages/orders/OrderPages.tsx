@@ -8,6 +8,7 @@ import type { OrderStatus } from '../../api/orders'
 import { FormAlert } from '../../components/form'
 import { formatCents } from '../../lib/money'
 import { NotFoundPage } from '../NotFoundPage'
+import { ReturnsSection } from './ReturnsSection'
 
 const STATUS_STYLE: Record<OrderStatus, string> = {
   pending_payment: 'bg-amber-100 text-amber-900',
@@ -96,7 +97,7 @@ export function OrderDetailPage() {
     }
   }
 
-  const refunded = order.payments.find((p) => p.status === 'refunded')
+  const refunds = order.payments.filter((p) => p.status === 'refunded')
 
   return (
     <div className="space-y-6" data-testid="order-detail" data-order={order.order_number}>
@@ -135,11 +136,11 @@ export function OrderDetailPage() {
           ))}
       </div>
       <FormAlert message={cancelError} testId="order-cancel-error" />
-      {refunded && (
-        <p className="text-sm text-violet-900" data-testid="order-refund">
-          Refunded {formatCents(refunded.amount_cents)} to card ending {refunded.card_last4}.
+      {refunds.map((r, i) => (
+        <p key={i} className="text-sm text-violet-900" data-testid="order-refund">
+          Refunded {formatCents(r.amount_cents)} to card ending {r.card_last4}.
         </p>
-      )}
+      ))}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <section aria-label="Items" className="rounded-2xl border border-stone-200 bg-white p-5">
@@ -157,6 +158,12 @@ export function OrderDetailPage() {
         <aside className="space-y-4">
           <dl className="space-y-1 rounded-2xl border border-stone-200 bg-white p-5 text-sm" data-testid="order-totals">
             <div className="flex justify-between"><dt>Subtotal</dt><dd>{formatCents(order.subtotal_cents)}</dd></div>
+            {order.discount_cents > 0 && (
+              <div className="flex justify-between text-green-800">
+                <dt>Discount{order.coupon_code ? ` (${order.coupon_code})` : ''}</dt>
+                <dd data-testid="order-discount">−{formatCents(order.discount_cents)}</dd>
+              </div>
+            )}
             <div className="flex justify-between"><dt>Tax</dt><dd data-testid="order-tax">{formatCents(order.tax_cents)}</dd></div>
             <div className="flex justify-between"><dt>Shipping</dt><dd>{order.shipping_cents ? formatCents(order.shipping_cents) : 'Free'}</dd></div>
             <div className="flex justify-between border-t border-stone-200 pt-1 font-semibold"><dt>Total</dt><dd data-testid="order-total">{formatCents(order.total_cents)}</dd></div>
@@ -173,6 +180,8 @@ export function OrderDetailPage() {
           </address>
         </aside>
       </div>
+
+      <ReturnsSection order={order} />
 
       <section aria-label="Order history" className="rounded-2xl border border-stone-200 bg-white p-5">
         <h2 className="mb-2 font-semibold">History</h2>
