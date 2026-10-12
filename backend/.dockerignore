@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+results/
+htmlcov/
+tests/
+perf/
+scripts/
+.env
+.env.*
+!.env.example

@@ -1,13 +1,18 @@
+import asyncio
+import contextlib
 import logging
 import time
 import uuid
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
+from app.core import worker
 from app.core.errors import install_error_handlers
 from app.core.openapi import document_errors
+from app.core.rate_limit import InMemoryStore, RedisStore, limiter
 from app.routers import (
     admin,
     auth,
@@ -27,6 +32,44 @@ API_PREFIX = "/api/v1"
 logger = logging.getLogger("homebasics.request")
 
 
+def _install_sentry(settings: Settings) -> None:
+    """Optional: only when a DSN is configured, so dev and CI stay offline."""
+    if not settings.sentry_dsn:
+        return
+    try:
+        import sentry_sdk
+    except ImportError:  # pragma: no cover - the extra isn't installed
+        logger.warning("SENTRY_DSN is set but sentry-sdk isn't installed")
+        return
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn, environment=settings.environment, send_default_pii=False
+    )
+
+
+def lifespan_for(settings: Settings):
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        _install_sentry(settings)
+        # The limiter is process-wide, so point it at the store this app's settings ask for.
+        limiter.use(RedisStore(settings.redis_url) if settings.redis_url else InMemoryStore())
+
+        stop = asyncio.Event()
+        task = (
+            asyncio.create_task(worker.run_forever(settings, stop))
+            if settings.worker_enabled
+            else None
+        )
+        try:
+            yield
+        finally:
+            if task is not None:
+                stop.set()
+                with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                    await asyncio.wait_for(task, timeout=10)
+
+    return lifespan
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(
@@ -34,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=settings.version,
         openapi_url=f"{API_PREFIX}/openapi.json",
         docs_url=f"{API_PREFIX}/docs",
+        lifespan=lifespan_for(settings),
     )
 
     app.state.settings = settings  # per-app config (tests build apps with their own)

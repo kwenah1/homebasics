@@ -14,6 +14,17 @@ def make(**overrides) -> Settings:
     return Settings(_env_file=None, **overrides)
 
 
+def make_prod(**overrides) -> Settings:
+    """A deployable prod config: anything missing here is a guard worth having (M9)."""
+    defaults = {
+        "environment": "prod",
+        "jwt_secret": STRONG_SECRET,
+        "web_base_url": "https://shop.example.com",
+        "cors_origins": ["https://shop.example.com"],
+    }
+    return make(**{**defaults, **overrides})
+
+
 class TestDatabaseUrl:
     @pytest.mark.parametrize(
         "raw",
@@ -42,20 +53,53 @@ class TestCorsOrigins:
 class TestProdGuards:
     def test_test_endpoints_forbidden_in_prod(self):
         with pytest.raises(ValidationError, match="ENABLE_TEST_ENDPOINTS"):
-            make(environment="prod", jwt_secret=STRONG_SECRET, enable_test_endpoints=True)
+            make_prod(enable_test_endpoints=True)
 
     @pytest.mark.parametrize("secret", ["dev-only-insecure-secret-change-me", "short"])
     def test_weak_jwt_secret_rejected_in_prod(self, secret):
         with pytest.raises(ValidationError, match="JWT_SECRET"):
-            make(environment="prod", jwt_secret=secret)
+            make_prod(jwt_secret=secret)
 
     def test_low_bcrypt_cost_rejected_in_prod(self):
         with pytest.raises(ValidationError, match="BCRYPT_ROUNDS"):
-            make(environment="prod", jwt_secret=STRONG_SECRET, bcrypt_rounds=4)
+            make_prod(bcrypt_rounds=4)
+
+    # M9: a deploy that still points at localhost would send reset links nobody can open.
+    @pytest.mark.parametrize("url", ["http://shop.example.com", "http://localhost:5173"])
+    def test_non_https_web_base_url_rejected_in_prod(self, url):
+        with pytest.raises(ValidationError, match="WEB_BASE_URL"):
+            make_prod(web_base_url=url)
+
+    @pytest.mark.parametrize(
+        "origins",
+        [["http://localhost:5173"], ["https://shop.example.com", "http://127.0.0.1:3000"]],
+    )
+    def test_localhost_cors_rejected_in_prod(self, origins):
+        with pytest.raises(ValidationError, match="CORS_ORIGINS"):
+            make_prod(cors_origins=origins)
 
     def test_valid_prod_config(self):
-        settings = make(environment="prod", jwt_secret=STRONG_SECRET)
+        settings = make_prod()
         assert settings.test_endpoints_active is False
+        assert settings.rate_limit_active is True
+        assert settings.email_sending_enabled is False  # until SMTP_HOST is set
+
+    def test_dev_defaults_are_not_held_to_prod_rules(self):
+        """Localhost and http are exactly right outside prod."""
+        settings = make()
+        assert settings.web_base_url.startswith("http://localhost")
+        assert settings.cors_origins == ["http://localhost:5173"]
+
+
+class TestDeploymentSettings:
+    def test_redis_and_smtp_are_off_by_default(self):
+        settings = make()
+        assert (settings.redis_url, settings.smtp_host) == (None, None)
+        assert settings.email_sending_enabled is False
+        assert (settings.worker_enabled, settings.sentry_dsn) == (False, None)
+
+    def test_smtp_host_switches_sending_on(self):
+        assert make(smtp_host="smtp.example.com").email_sending_enabled is True
 
     @pytest.mark.parametrize(
         ("environment", "flag", "expected"),

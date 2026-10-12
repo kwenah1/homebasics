@@ -48,6 +48,23 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     enable_test_endpoints: bool = False
 
+    # --- Deployment (M9) ----------------------------------------------------------------------
+    # Shared rate-limit store. Without it the limiter is per-process, which only holds for a
+    # single instance (NFR-SEC-01).
+    redis_url: str | None = None
+    # Outbox delivery. Without a host, emails stay in the table (dev and test behaviour).
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_starttls: bool = True
+    email_from: str = "HomeBasics <no-reply@homebasics.test>"
+    # In-process background worker: expiry sweep + outbox delivery (OPS-01).
+    worker_enabled: bool = False
+    worker_interval_seconds: int = 60
+    outbox_batch_size: int = 20
+    sentry_dsn: str | None = None
+
     @field_validator("database_url", "test_database_url")
     @classmethod
     def use_psycopg_driver(cls, value: str | None) -> str | None:
@@ -89,6 +106,12 @@ class Settings(BaseSettings):
                 raise ValueError("BUG_INJECTION must be empty in prod")
             if self.rate_limit_enabled is False:
                 raise ValueError("RATE_LIMIT_ENABLED can't be turned off in prod")
+            # A deploy that silently points emails and reset links at localhost is worse than
+            # one that refuses to start.
+            if not self.web_base_url.startswith("https://"):
+                raise ValueError("WEB_BASE_URL must be an https URL in prod")
+            if any("localhost" in origin or "127.0.0.1" in origin for origin in self.cors_origins):
+                raise ValueError("CORS_ORIGINS must not include localhost in prod")
         return self
 
     @property
@@ -96,6 +119,10 @@ class Settings(BaseSettings):
         if self.rate_limit_enabled is None:
             return self.environment == "prod"
         return self.rate_limit_enabled
+
+    @property
+    def email_sending_enabled(self) -> bool:
+        return bool(self.smtp_host)
 
     @property
     def test_endpoints_active(self) -> bool:
