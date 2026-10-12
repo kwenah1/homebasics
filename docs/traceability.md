@@ -104,6 +104,11 @@ Layers: U unit, I integration (API + DB), F frontend (Vitest), E E2E (Playwright
 | NFR-SEC-03 | `pip-audit` + `npm audit` steps in `ci.yml`; ZAP API + baseline scans in `nightly.yml` | Covered (CI) |
 | NFR-QUAL-01 | Schemathesis over all 50 operations: no 500s, documented status codes only, content types and bodies match the spec (`test_contract.py`); derived 401/403/404/422 docs (`test_input_hardening.py::TestSpecDocumentsErrors`) | Covered |
 | NFR-PERF-01 | `backend/perf/locustfile.py` - fails the nightly job over the p95 / failure budget | Covered (nightly) |
+| OPS-01 | Worker runs the sweep and outbox delivery; a failing job doesn't stop the others (`test_outbox_worker.py::TestTick`) | Covered |
+| OPS-02 | `e2e/tests/deployed/smoke.spec.ts` run by `deploy.yml` after each release and by `uptime.yml` every 30 min | Covered (deployed) |
+| OPS-03 | Outbox delivery: batching, SKIP LOCKED, retry, give up after 5, nothing sent without SMTP (`test_outbox_worker.py`) | Covered |
+| OPS-04 | Prod guards incl. https `WEB_BASE_URL` and non-localhost CORS (`test_config.py::TestProdGuards`); test endpoints absent in prod (deployed smoke) | Covered |
+| NFR-SEC-01 (shared) | In-memory and Redis stores pass the same suite, fakeredis (`test_rate_limit_stores.py`) | Covered |
 | NFR-SEC-04 | API CORP header (`test_health.py`, `api/phase2.spec.ts`); frontend headers in `vite.config.ts`, checked by the nightly ZAP web scan | Covered (nightly) |
 | NFR-TEST-01 | `scripts/bug_hunt.py`: 15 injected bugs (5 new in M8), all caught (CI `bug-hunt` job); switch safety (`test_bug_injection.py`) | Covered |
 | NFR-A11Y | `e2e/tests/a11y.spec.ts` - all public pages incl. filtered/empty results and product detail, a form in its error state, the account page | Covered (current pages) |

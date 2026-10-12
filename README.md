@@ -43,6 +43,17 @@ cd ../e2e && npm install && npx playwright install chromium
 
 > Port 8010 because Splunk owns 8000 on this machine.
 
+## Deploy it
+
+The API runs on Fly.io and the web app on Vercel, with Vercel proxying `/api` to the API so
+the session cookie stays same-origin. Pushes to `main` deploy automatically once the tokens
+are in place, then smoke-test the live site; the same suite runs every 30 minutes as an
+uptime check. Setup, secrets and rollback: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
+```bash
+cd e2e && BASE_URL=https://your-app.vercel.app npm run test:deployed
+```
+
 ## Test it
 
 | Suite | Command |
