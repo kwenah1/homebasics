@@ -30,27 +30,17 @@ class Target:
     tests: str  # the smallest test set covering it, so each mutant runs fast
 
 
+# The whole unit suite runs for each mutant: it needs no database (~3 s), and picking a
+# single file per module silently ignores the property tests in the others - which made 36
+# mutants look like survivors when the tests covering them simply weren't being run.
 TARGETS = [
-    Target("pricing", "app/services/pricing.py", "tests/unit/test_pricing.py"),
-    Target("refunds", "app/services/refunds.py", "tests/unit/test_refunds.py"),
+    Target("pricing", "app/services/pricing.py", "tests/unit"),
+    Target("refunds", "app/services/refunds.py", "tests/unit"),
 ]
 
 # Mutants that cannot change behaviour for inputs the function can actually receive, so no
 # test could kill them. Each needs a reason; anything *not* listed here fails the run.
-EQUIVALENT = {
-    "refunds.py cumulative_refund ReplaceComparisonOperator_LtE_Eq": (
-        "`<= 0` vs `== 0` on a quantity that is never negative"
-    ),
-    "refunds.py cumulative_refund ReplaceComparisonOperator_LtE_Lt": (
-        "at exactly 0 the fall-through computes 0 anyway"
-    ),
-    "refunds.py cumulative_refund ReplaceComparisonOperator_GtE_Gt": (
-        "at a full return both branches give goods_paid"
-    ),
-    "refunds.py cumulative_refund NumberReplacer": (
-        "shifting the 0 guard still returns 0 for the reachable inputs"
-    ),
-}
+EQUIVALENT: dict[str, str] = {}  # filled in below, once a run shows which ones are real
 
 
 def config_for(target: Target, workdir: Path) -> Path:
@@ -98,7 +88,9 @@ def run(target: Target, workdir: Path) -> tuple[int, list[str], list[str]]:
             mutation = item["mutations"][0]
             name = Path(mutation["module_path"]).name
             operator = mutation["operator_name"].removeprefix("core/")
-            key = f"{name} {mutation['definition_name']} {operator}"
+            # Keyed by position too: two comparisons on one line are different mutants,
+            # and an allowlist entry must never excuse one it wasn't written for.
+            key = f"{name}:{mutation['start_pos'][0]}:{mutation['start_pos'][1]} {operator}"
             if key in EQUIVALENT:
                 known.append(f"{key}: {EQUIVALENT[key]}")
                 continue

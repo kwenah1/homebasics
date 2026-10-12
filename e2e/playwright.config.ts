@@ -22,7 +22,13 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI
-    ? [['list'], ['html', { open: 'never' }], ['junit', { outputFile: 'results/junit.xml' }]]
+    ? [
+        ['list'],
+        ['html', { open: 'never' }],
+        ['junit', { outputFile: 'results/junit.xml' }],
+        // Read by scripts/flaky-report.mjs to surface retried tests in the job summary.
+        ['json', { outputFile: 'results/report.json' }],
+      ]
     : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: WEB_URL,

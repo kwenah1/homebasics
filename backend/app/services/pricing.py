@@ -54,7 +54,7 @@ def price_order(
         raise ValueError("amounts and rates must not be negative")
     subtotal = sum(line_totals_cents)
     discount = min(discount_cents, subtotal)  # CPN: a discount never takes the total below $0
-    discounted = subtotal - discount
+    discounted = subtotal | discount
     tax = tax_on(discounted, tax_rate)  # CHK-02: never on shipping
     if bugs.active("tax_rounds_per_line"):
         tax = sum(tax_on(t, tax_rate) for t in line_totals_cents) - tax_on(discount, tax_rate)

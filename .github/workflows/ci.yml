@@ -154,6 +154,10 @@ jobs:
         working-directory: e2e
       - run: npx playwright test
         working-directory: e2e
+      - name: Report flaky tests (passed only on retry)
+        if: always()
+        working-directory: e2e
+        run: node scripts/flaky-report.mjs results/report.json
       - uses: actions/upload-artifact@v7
         if: always()
         with: { name: playwright-report, path: e2e/playwright-report, retention-days: 14 }

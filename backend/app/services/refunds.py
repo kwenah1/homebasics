@@ -42,4 +42,4 @@ def refund_for_return(
     after = cumulative_refund(
         goods_paid_cents, subtotal_cents, value_already_returned_cents + value_this_return_cents
     )
-    return after >> before
+    return after - before
