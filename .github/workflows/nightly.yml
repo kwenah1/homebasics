@@ -74,12 +74,38 @@ jobs:
           docker run --rm --network host -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://localhost:4173 -r zap-web.html -J zap-web.json -I
 
+      - name: Lighthouse budgets (NFR-PERF, a11y)
+        if: always()
+        working-directory: frontend
+        # The web app is already built and served on 4173; point Lighthouse at the same pages
+        # the E2E suite covers. Budgets live in lighthouserc.json.
+        run: |
+          sed -i 's|localhost:5173|localhost:4173|g' lighthouserc.json
+          npx --yes @lhci/cli@0.15.x autorun --config=lighthouserc.json || echo "::warning::Lighthouse budgets not met"
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-reports
           path: |
             reports/
+            frontend/lighthouse-report/
             api.log
             web.log
           retention-days: 30
+
+  mutation:
+    name: Mutation testing - the money maths
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    env:
+      # Pure modules with unit tests only: no database is touched, but settings still load.
+      DATABASE_URL: postgresql+psycopg://unused:unused@localhost:5432/unused
+      JWT_SECRET: nightly-only-secret-not-used-in-production-00
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '${{ env.PYTHON_VERSION }}', cache: pip, cache-dependency-path: backend/requirements*.txt }
+      - run: pip install -r requirements-dev.txt cosmic-ray
+      - name: Every mutant must be killed (or listed as equivalent)
+        run: python scripts/mutation.py

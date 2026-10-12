@@ -71,11 +71,38 @@ cd e2e && BASE_URL=https://your-app.vercel.app npm run test:deployed
 | Bug hunt (each injected bug must fail the tests) | `backend> .venv\Scripts\python scripts/bug_hunt.py` |
 | Load test (API running, seeded) | `backend> .venv\Scripts\locust -f perf/locustfile.py --host http://localhost:8010 --headless -u 50 -r 10 -t 2m` |
 | Dependency audit | `backend> .venv\Scripts\pip-audit -r requirements.txt` / `frontend> npm audit --omit=dev` |
+| Cross-browser (critical journeys) | `e2e> npx playwright test --project=firefox --project=webkit` |
+| Visual regression | `e2e> npx playwright test --project=visual` (baselines are Linux-only: see below) |
+| Mutation testing (money maths) | `backend> .venv\Scripts\python scripts/mutation.py` |
+| Regenerate the API types | `backend> .venv\Scripts\python scripts/dump_openapi.py` then `frontend> npm run api:types` |
 
 `locust` isn't in `requirements-dev.txt` (it's heavy and only the nightly job needs it):
 `pip install locust`. The nightly workflow (`.github/workflows/nightly.yml`) runs the load
 test against a local Postgres - judge p95 there, not against Neon over the internet - plus
 OWASP ZAP scans of the API and the web app.
+
+### Keeping the client and the API in step
+
+`docs/openapi.json` is committed. The web app's types are generated from it
+(`npm run api:types`) and `frontend/src/api/contract.ts` asserts at compile time that the
+hand-written API types match the spec exactly - so a renamed or newly-nullable field fails
+`npm run typecheck` rather than showing up as `undefined` in a browser. CI fails if either the
+spec or the generated types are stale.
+
+### Visual regression
+
+Baselines live beside `e2e/tests/visual/pages.spec.ts` and are rendered **on Linux by CI** -
+fonts and form controls differ per platform, so screenshots taken on Windows or macOS would
+never match. When a UI change is meant to change how a page looks, add the
+`update-visual-baselines` label to the pull request (or run the *Visual baselines* workflow)
+and CI commits the new images.
+
+### Mutation testing
+
+`scripts/mutation.py` rewrites operators and constants in the pure pricing and refund modules
+and reruns their unit tests; a surviving mutant is a rule change no test objects to. It runs
+nightly. Mutants that cannot change behaviour for reachable inputs are listed as equivalent
+in the script, each with a reason - anything else fails the run.
 
 ### Bug injection
 
@@ -92,7 +119,10 @@ stop the app at startup; prod refuses any. Auth rate limiting is off outside pro
 | `api` | HTTP contract tests straight against FastAPI | parallel |
 | `chromium` | UI journeys, a11y | parallel |
 | `mobile` | `@mobile`-tagged journeys on a Pixel 7 viewport | parallel |
+| `firefox` / `webkit` | `@smoke` / `@crossbrowser` journeys on the other engines | parallel |
+| `visual` | Screenshot comparison against Linux baselines | parallel |
 | `isolated` | Tests that change **global** state: server clock, full DB reset | after all others, 1 worker |
+| `deployed` | Read-only smoke tests against a live site (own config) | on demand / after deploy |
 
 UI tests never share accounts: the `user` / `signedInUser` fixtures register a fresh customer
 per test, so parallel workers can't collide.

@@ -30,6 +30,31 @@ def test_no_subtotal_no_refund():
     assert cumulative_refund(0, 0, 100) == 0
 
 
+# The three below were added after mutation testing (M10): each covers a change to the rules
+# that the suite previously accepted in silence.
+
+
+@pytest.mark.parametrize(
+    ("total", "shipping", "expected"),
+    [(6009, 599, 5410), (5846, 0, 5846), (1679, 599, 1080)],
+)
+def test_shipping_is_never_part_of_what_can_be_refunded(total, shipping, expected):
+    """RET-04. Every other test happens to use free shipping, where this can't be seen."""
+    assert goods_paid(total, shipping) == expected
+
+
+def test_an_order_with_no_subtotal_refunds_nothing_even_if_something_was_paid():
+    """Defensive: a free order can't refund money, however much came back."""
+    assert cumulative_refund(500, 0, 100) == 0
+    assert cumulative_refund(500, -1, 100) == 0
+
+
+def test_the_smallest_possible_return():
+    """One cent of a $50 order: the share is real, not rounded away to nothing."""
+    assert cumulative_refund(5000, 5000, 1) == 1
+    assert cumulative_refund(2500, 5000, 1) == 0  # half price paid: rounds down to zero
+
+
 orders = st.lists(st.integers(1, 20_000), min_size=1, max_size=6).flatmap(
     lambda lines: st.tuples(
         st.just(lines),

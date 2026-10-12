@@ -109,6 +109,11 @@ Layers: U unit, I integration (API + DB), F frontend (Vitest), E E2E (Playwright
 | OPS-03 | Outbox delivery: batching, SKIP LOCKED, retry, give up after 5, nothing sent without SMTP (`test_outbox_worker.py`) | Covered |
 | OPS-04 | Prod guards incl. https `WEB_BASE_URL` and non-localhost CORS (`test_config.py::TestProdGuards`); test endpoints absent in prod (deployed smoke) | Covered |
 | NFR-SEC-01 (shared) | In-memory and Redis stores pass the same suite, fakeredis (`test_rate_limit_stores.py`) | Covered |
+| QUA-01 | `src/api/contract.ts` compile-time assertions against generated `schema.d.ts`; CI fails on a stale spec or stale types | Covered |
+| QUA-02 | `firefox` / `webkit` Playwright projects over the @smoke journeys | Covered |
+| QUA-03 | `e2e/tests/visual/pages.spec.ts` + `visual-baselines.yml` | Covered |
+| QUA-04 | `backend/scripts/mutation.py` (cosmic-ray), nightly job | Covered (nightly) |
+| QUA-05 | `.github/workflows/security.yml` - gitleaks + semgrep | Covered |
 | NFR-SEC-04 | API CORP header (`test_health.py`, `api/phase2.spec.ts`); frontend headers in `vite.config.ts`, checked by the nightly ZAP web scan | Covered (nightly) |
 | NFR-TEST-01 | `scripts/bug_hunt.py`: 15 injected bugs (5 new in M8), all caught (CI `bug-hunt` job); switch safety (`test_bug_injection.py`) | Covered |
 | NFR-A11Y | `e2e/tests/a11y.spec.ts` - all public pages incl. filtered/empty results and product detail, a form in its error state, the account page | Covered (current pages) |
@@ -183,3 +188,14 @@ Layers: U unit, I integration (API + DB), F frontend (Vitest), E E2E (Playwright
 | 33 | Lint (oxlint `set-state-in-effect`) | Dropping a no-longer-valid coupon via an effect caused an extra render and could place with a stale code | Rejection handled inside the quote's query function; place-order sends the code the shown total was priced with: `CheckoutCoupons.test.tsx` |
 | 34 | E2E (`phase2.spec.ts::returns`) | Approving a return from the "Requested" queue refetched the list, the card left it, and its "Approved." confirmation vanished with it - staff got no feedback | Confirmations shown at page level: `AdminPhase2.test.tsx`, `phase2.spec.ts` |
 | 35 | E2E (isolated, time travel) | The order page decided "return window closed" from the *browser's* clock, so once the server's clock had passed 30 days it claimed everything had been returned (a shopper with a wrong device clock would see the same) | The server reports `return_window.status` (open / closed / nothing_left / not_delivered): `test_returns.py::TestWindow`, `Returns.test.tsx`, `isolated/phase2-global.spec.ts` |
+
+## Defects found by the suites during Milestone 10
+
+| # | Found by | Defect | Fix + regression test |
+|---|---|---|---|
+| 36 | Type conformance against the OpenAPI spec | `cart.unknown_product_ids` was optional in the spec but required by the client; a response without it would have been a runtime `undefined` | The server always sends it, so the schema now says so (`json_schema_serialization_defaults_required`): `src/api/contract.ts` |
+| 37 | Type conformance | `AdminSummary.orders_by_status` claimed every order status as a key, which the contract never promised; a missing status would have read as `undefined` in the dashboard | Typed as the contract defines it |
+| 38 | Type conformance | Inventory `reason` was typed as a bare `string`, so a typo in a reason code compiled | Typed as the enum |
+| 39 | Mutation testing | `goods_paid` could have used any operator excluding shipping and no test noticed: every case happened to use free shipping, so RET-04's "shipping is never refunded" rule was untested | `test_shipping_is_never_part_of_what_can_be_refunded` |
+| 40 | Mutation testing | The zero-subtotal guard and the smallest possible return (one cent) were untested; 7 mutants of that line survived | `test_an_order_with_no_subtotal_refunds_nothing_even_if_something_was_paid`, `test_the_smallest_possible_return` |
+| 41 | Cross-browser + first-run flakiness | E2E ran against the dev server, so the first page load raced Vite's on-demand build; with three engines starting at once it timed out | CI runs against the built app (which also exercises the real CSP); setup warms the server |
