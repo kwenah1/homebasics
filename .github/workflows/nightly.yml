@@ -74,12 +74,80 @@ jobs:
           docker run --rm --network host -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://localhost:4173 -r zap-web.html -J zap-web.json -I
 
+      - name: Lighthouse budgets (NFR-PERF, a11y)
+        if: always()
+        working-directory: frontend
+        # The web app is already built and served on 4173; point Lighthouse at the same pages
+        # the E2E suite covers. Budgets live in lighthouserc.json.
+        run: |
+          sed -i 's|localhost:5173|localhost:4173|g' lighthouserc.json
+          npx --yes @lhci/cli@0.15.x autorun --config=lighthouserc.json || echo "::warning::Lighthouse budgets not met"
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-reports
           path: |
             reports/
+            frontend/lighthouse-report/
             api.log
             web.log
           retention-days: 30
+
+  mutation:
+    name: Mutation testing - the money maths
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    env:
+      # Pure modules with unit tests only: no database is touched, but settings still load.
+      DATABASE_URL: postgresql+psycopg://unused:unused@localhost:5432/unused
+      JWT_SECRET: nightly-only-secret-not-used-in-production-00
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '${{ env.PYTHON_VERSION }}', cache: pip, cache-dependency-path: backend/requirements*.txt }
+      - run: pip install -r requirements-dev.txt cosmic-ray
+      - name: Every mutant must be killed (or listed as equivalent)
+        run: python scripts/mutation.py
+
+  flake-hunt:
+    name: Flake hunt - the critical journeys, three times over
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: homebasics, POSTGRES_PASSWORD: homebasics, POSTGRES_DB: homebasics }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
+    env:
+      ENVIRONMENT: test
+      ENABLE_TEST_ENDPOINTS: 'true'
+      JWT_SECRET: nightly-only-secret-not-used-in-production-00
+      # No retries: a test that fails once here is flaky, and that's what we want to see.
+      PWTEST_RETRIES: '0'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '${{ env.PYTHON_VERSION }}' }
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: Backend venv + migrate + seed
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/alembic upgrade head
+          .venv/bin/python -m app.seed.run
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - name: Run the smoke journeys three times with no retries
+        working-directory: e2e
+        run: npx playwright test --project=chromium --grep @smoke --repeat-each=3 --retries=0
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with: { name: flake-hunt-report, path: e2e/playwright-report, retention-days: 14 }

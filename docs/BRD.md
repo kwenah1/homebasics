@@ -293,6 +293,19 @@ Clarifications (M7):
 - **OPS-04** Production refuses to start misconfigured: test endpoints on, a weak JWT secret,
   bcrypt below 12, bug injection, rate limiting off, a non-https `WEB_BASE_URL`, or localhost
   in `CORS_ORIGINS`. Migrations run once per release, not from a booting instance.
+- **QUA-01** The web app's API types are generated from the committed `docs/openapi.json`, and
+  compile-time assertions pin the hand-written types to them. A backend change that renames a
+  field or makes one nullable fails the typecheck instead of surfacing as `undefined`.
+- **QUA-02** Critical journeys (`@smoke`, `@crossbrowser`) run on Chromium, Firefox and WebKit.
+  Running everything three times would mostly re-test our own logic; what differs between
+  engines is rendering, form controls, storage and cookies.
+- **QUA-03** The main pages have committed screenshots, rendered on Linux by CI because fonts
+  render differently per platform. Time- and stock-dependent regions are masked.
+- **QUA-04** Mutation testing (nightly) rewrites operators and constants in the pure pricing
+  and refund modules: a surviving mutant is a rule change no test objects to. Mutants that
+  cannot change behaviour for reachable inputs are listed as equivalent, with a reason.
+- **QUA-05** Static analysis (semgrep) and secret scanning (gitleaks) run on every PR and
+  weekly. CodeQL would need GitHub Advanced Security on a private repository.
 - **NFR-SEC-04** The built web app is served with a strict Content-Security-Policy, nosniff,
   frame denial, referrer and permissions policies, COOP and CORP (reference list in
   `frontend/vite.config.ts`, applied by `vite preview`); API responses carry
@@ -337,7 +350,10 @@ Phase 2 adds `coupons`, `coupon_redemptions`, `reviews`, `wishlist_items`, `retu
 | Performance | Locust | Catalog browsing and search, p95 budget (nightly) |
 | Security | OWASP ZAP (API + web, nightly), Bandit (ruff `S`), pip-audit, npm audit | |
 | Deployed smoke / uptime | Playwright against the live site | Read-only: health, headers, browse, cart (per deploy + every 30 min) |
-| Test effectiveness | Bug injection + `scripts/bug_hunt.py` | Every known bug must turn the suite red |
+| Test effectiveness | Bug injection + `scripts/bug_hunt.py`; cosmic-ray mutation testing | Known bugs must turn the suite red; mutants of the money maths must be killed |
+| Visual | Playwright screenshots, baselines rendered by CI | Layout regressions on the main pages |
+| Cross-browser | Playwright: Chromium, Firefox, WebKit, mobile Chrome | Critical journeys on every engine |
+| Contract (client) | Types generated from the committed OpenAPI spec | The web app's types must match the API exactly |
 | Reporting | JUnit XML, Playwright HTML, coverage (target 90% services) | |
 
 Traceability: see [traceability.md](traceability.md).

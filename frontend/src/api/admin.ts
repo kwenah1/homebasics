@@ -30,7 +30,7 @@ export interface AdminCategory {
 export interface Movement {
   id: number
   delta: number
-  reason: string
+  reason: InventoryReason
   order_number: string | null
   actor_email: string | null
   note: string | null
@@ -59,8 +59,19 @@ export interface AdminOrder extends Order {
   next_statuses: OrderStatus[]
 }
 
+export type InventoryReason =
+  | 'initial'
+  | 'restock'
+  | 'adjustment'
+  | 'damaged'
+  | 'order_placed'
+  | 'order_cancelled'
+  | 'order_expired'
+  | 'return_restock'
+
 export interface AdminSummary {
-  orders_by_status: Record<OrderStatus, number>
+  // Keyed by OrderStatus, but the contract only promises string keys.
+  orders_by_status: Record<string, number>
   awaiting_fulfilment: number
   low_stock: { id: number; sku: string; name: string; stock_qty: number }[]
 }

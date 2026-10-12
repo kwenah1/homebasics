@@ -14,3 +14,9 @@ setup('reset database to the seed state', async ({ request }) => {
   const response = await request.post(`${API_URL}/api/v1/test/reset`)
   expect(response.ok(), 'ENABLE_TEST_ENDPOINTS must be true for E2E').toBeTruthy()
 })
+
+setup('warm up the web server', async ({ request }) => {
+  // The dev server compiles on first request; three browsers arriving together otherwise
+  // race that build and the slowest one times out. Pay it once, here.
+  expect((await request.get('/')).ok()).toBeTruthy()
+})

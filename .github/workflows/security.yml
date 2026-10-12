@@ -1,0 +1,49 @@
+name: Security scan
+
+# Static analysis and secret scanning (M10).
+#
+# Not CodeQL: it needs GitHub Advanced Security on a private repository. Semgrep's OSS rules
+# and the gitleaks CLI do the same job on any plan, and both run from a plain binary so there
+# is no token or licence to manage.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 5 * * 1' # Mondays - new rules land upstream between runs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 } # the whole history, not just this commit
+      - name: Install gitleaks
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C /tmp
+          /tmp/gitleaks version
+        env:
+          GITLEAKS_VERSION: 8.30.0
+      - name: Scan history for committed secrets
+        run: /tmp/gitleaks detect --no-banner --redact --verbose --exit-code 1
+
+  sast:
+    name: Static analysis (semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '3.13' } # semgrep's wheels lag the newest Python
+      - run: pip install semgrep
+      - name: Scan backend and frontend
+        # Fails the job on any finding; rules cover injection, auth, crypto and XSS patterns.
+        run: |
+          semgrep scan --error --quiet --metrics=off \
+            --config p/python --config p/typescript --config p/react \
+            --config p/secrets --config p/sql-injection \
+            backend/app frontend/src e2e

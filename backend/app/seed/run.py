@@ -28,6 +28,10 @@ def slugify(value: str) -> str:
 
 def truncate_all(db: Session) -> None:
     tables = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
+    # The table names come from our own SQLAlchemy metadata, never from a request, and
+    # TRUNCATE can't take bound parameters. Reachable only via the test-support endpoints,
+    # which are impossible in prod. (The suppression must sit directly above the line.)
+    # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
     db.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))  # noqa: S608
 
 

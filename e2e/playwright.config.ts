@@ -13,12 +13,22 @@ const python = path.join(
 
 export default defineConfig({
   testDir: './tests',
+  // 30 s (the default) is tight here: every request crosses the network to Neon, and with
+  // three engines a cold browser launch can eat most of the budget before the first byte.
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI
-    ? [['list'], ['html', { open: 'never' }], ['junit', { outputFile: 'results/junit.xml' }]]
+    ? [
+        ['list'],
+        ['html', { open: 'never' }],
+        ['junit', { outputFile: 'results/junit.xml' }],
+        // Read by scripts/flaky-report.mjs to surface retried tests in the job summary.
+        ['json', { outputFile: 'results/report.json' }],
+      ]
     : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: WEB_URL,
@@ -39,16 +49,41 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: /(api|isolated|setup|deployed)\//,
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile',
-      testIgnore: /(api|isolated|setup|deployed)\//,
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
       grep: /@mobile/,
       dependencies: ['setup'],
       use: { ...devices['Pixel 7'] },
+    },
+    // Cross-browser (M10): the critical journeys on the other two engines. Running the whole
+    // suite three times would mostly re-test our own logic; what differs between engines is
+    // rendering, form controls, storage and cookies - which is what @smoke covers.
+    {
+      name: 'firefox',
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
+      grep: /@smoke|@crossbrowser/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
+      grep: /@smoke|@crossbrowser/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      // Visual regression (M10). Separate project so a pixel diff never blocks behavioural
+      // tests, and because the baselines are Linux-only - see tests/visual/pages.spec.ts.
+      name: 'visual',
+      testMatch: /visual\/.*\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
     {
       // Tests that change global state (server clock, full DB reset) must run alone: this
@@ -58,7 +93,7 @@ export default defineConfig({
       testMatch: /isolated\/.*\.spec\.ts/,
       fullyParallel: false,
       workers: 1,
-      dependencies: ['api', 'chromium', 'mobile'],
+      dependencies: ['api', 'chromium', 'mobile', 'firefox', 'webkit', 'visual'],
       use: { ...devices['Desktop Chrome'] },
     },
   ],
@@ -72,11 +107,16 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: 'npm run dev',
+      // CI runs against the *built* app, like production: no on-demand compiling (the first
+      // page load used to race the dev server's first build and time out), and the real
+      // Content-Security-Policy is exercised. Locally, the dev server stays for fast edits.
+      command: process.env.CI
+        ? 'npm run build && npm run preview -- --port 5173 --strictPort'
+        : 'npm run dev',
       cwd: path.resolve(__dirname, '../frontend'),
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      timeout: 120_000,
     },
   ],
 })

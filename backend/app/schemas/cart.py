@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.catalog import CategoryRef, StockStatus
 from app.schemas.common import StrictModel
@@ -64,6 +64,11 @@ class CartOut(BaseModel):
     free_shipping_threshold_cents: int
     amount_to_free_shipping_cents: int
     # Preview only: guest cart ids that no longer exist, so the browser can prune them.
+    # The response always carries this (empty when there's nothing odd), so the schema must
+    # mark it required - a default would make it optional for clients (found by the M10
+    # type-conformance check).
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     unknown_product_ids: list[int] = Field(default_factory=list)
 
 

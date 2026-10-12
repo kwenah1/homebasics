@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "api:types": "npx --yes openapi-typescript@7 ../docs/openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
