@@ -13,6 +13,10 @@ const python = path.join(
 
 export default defineConfig({
   testDir: './tests',
+  // 30 s (the default) is tight here: every request crosses the network to Neon, and with
+  // three engines a cold browser launch can eat most of the budget before the first byte.
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -50,6 +54,23 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Pixel 7'] },
     },
+    // Cross-browser (M10): the critical journeys on the other two engines. Running the whole
+    // suite three times would mostly re-test our own logic; what differs between engines is
+    // rendering, form controls, storage and cookies - which is what @smoke covers.
+    {
+      name: 'firefox',
+      testIgnore: /(api|isolated|setup|deployed)\//,
+      grep: /@smoke|@crossbrowser/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      testIgnore: /(api|isolated|setup|deployed)\//,
+      grep: /@smoke|@crossbrowser/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Safari'] },
+    },
     {
       // Tests that change global state (server clock, full DB reset) must run alone: this
       // project waits for every other one and runs its files one at a time in one worker.
@@ -58,7 +79,7 @@ export default defineConfig({
       testMatch: /isolated\/.*\.spec\.ts/,
       fullyParallel: false,
       workers: 1,
-      dependencies: ['api', 'chromium', 'mobile'],
+      dependencies: ['api', 'chromium', 'mobile', 'firefox', 'webkit'],
       use: { ...devices['Desktop Chrome'] },
     },
   ],
@@ -72,11 +93,16 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: 'npm run dev',
+      // CI runs against the *built* app, like production: no on-demand compiling (the first
+      // page load used to race the dev server's first build and time out), and the real
+      // Content-Security-Policy is exercised. Locally, the dev server stays for fast edits.
+      command: process.env.CI
+        ? 'npm run build && npm run preview -- --port 5173 --strictPort'
+        : 'npm run dev',
       cwd: path.resolve(__dirname, '../frontend'),
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      timeout: 120_000,
     },
   ],
 })
