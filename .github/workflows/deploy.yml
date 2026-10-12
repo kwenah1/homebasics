@@ -1,0 +1,89 @@
+name: Deploy
+
+# Deploys main after CI passes: API to Fly.io, web app to Vercel, then smoke-tests the live
+# site (OPS-02). Every job no-ops with a notice until the matching secrets exist, so the repo
+# stays green before the one-time setup in docs/DEPLOYMENT.md is done.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  api:
+    name: API -> Fly.io
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      deployed: ${{ steps.check.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: echo "ready=${{ secrets.FLY_API_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.ready != 'true'
+        run: echo "::notice::FLY_API_TOKEN not set - skipping the API deploy (see docs/DEPLOYMENT.md)"
+      - if: steps.check.outputs.ready == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy (runs migrations + seed via release_command)
+        if: steps.check.outputs.ready == 'true'
+        working-directory: backend
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only
+
+  web:
+    name: Web -> Vercel
+    needs: api
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: echo "ready=${{ secrets.VERCEL_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.ready != 'true'
+        run: echo "::notice::VERCEL_TOKEN not set - skipping the web deploy (see docs/DEPLOYMENT.md)"
+      - if: steps.check.outputs.ready == 'true'
+        uses: actions/setup-node@v7
+        with: { node-version: '22' }
+      - name: Build and deploy
+        if: steps.check.outputs.ready == 'true'
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  smoke:
+    name: Smoke tests against production
+    needs: [api, web]
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: e2e } }
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: echo "url=${{ vars.PROD_WEB_URL }}" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.url == ''
+        run: echo "::notice::PROD_WEB_URL variable not set - skipping smoke tests"
+      - if: steps.check.outputs.url != ''
+        uses: actions/setup-node@v7
+        with: { node-version: '22' }
+      - if: steps.check.outputs.url != ''
+        run: npm ci
+      - if: steps.check.outputs.url != ''
+        run: npx playwright install --with-deps chromium
+      - name: Smoke
+        if: steps.check.outputs.url != ''
+        env:
+          BASE_URL: ${{ vars.PROD_WEB_URL }}
+        run: npm run test:deployed
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.check.outputs.url != ''
+        with: { name: smoke-report, path: e2e/playwright-report, retention-days: 14 }

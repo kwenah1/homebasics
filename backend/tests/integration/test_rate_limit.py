@@ -82,19 +82,16 @@ def test_prod_cannot_turn_it_off():
 
     from app.config import Settings
 
+    # A deployable prod config (M9 added the https / CORS guards).
+    prod = {
+        "_env_file": None,
+        "environment": "prod",
+        "jwt_secret": "x" * 40,
+        "enable_test_endpoints": False,
+        "bcrypt_rounds": 12,
+        "web_base_url": "https://shop.example.com",
+        "cors_origins": ["https://shop.example.com"],
+    }
     with pytest.raises(ValidationError, match="RATE_LIMIT_ENABLED"):
-        Settings(
-            _env_file=None,
-            environment="prod",
-            jwt_secret="x" * 40,
-            enable_test_endpoints=False,
-            bcrypt_rounds=12,
-            rate_limit_enabled=False,
-        )
-    assert Settings(
-        _env_file=None,
-        environment="prod",
-        jwt_secret="x" * 40,
-        enable_test_endpoints=False,
-        bcrypt_rounds=12,
-    ).rate_limit_active
+        Settings(**prod, rate_limit_enabled=False)
+    assert Settings(**prod).rate_limit_active

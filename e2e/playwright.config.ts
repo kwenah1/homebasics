@@ -39,13 +39,13 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: /(api|isolated|setup)\//,
+      testIgnore: /(api|isolated|setup|deployed)\//,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile',
-      testIgnore: /(api|isolated|setup)\//,
+      testIgnore: /(api|isolated|setup|deployed)\//,
       grep: /@mobile/,
       dependencies: ['setup'],
       use: { ...devices['Pixel 7'] },

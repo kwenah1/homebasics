@@ -282,6 +282,17 @@ Clarifications (M7):
 - **NFR-PERF-01** Locust (Python, like the rest of the backend) replaces k6: 50 users browsing,
   filtering and searching for 2 minutes; p95 under 300 ms per endpoint and under 1% failures, or the
   nightly job fails. Warm-up requests are reported but not held to the budget.
+- **OPS-01** Jobs that must happen without a request - the ORD-01 expiry sweep and outbox
+  delivery - run in a background worker every 60 s (`WORKER_ENABLED`). Requests still sweep,
+  so a single sleeping instance stays correct. A failing job never stops the loop.
+- **OPS-02** Every deploy, and then every 30 minutes, a read-only smoke suite runs against the
+  live site: health (including the database), security headers, that `/api/v1/test/*` is not
+  exposed, and that a shopper can browse, search, open a product and fill a cart.
+- **OPS-03** Email leaves the outbox in a separate step from the change that queued it, with
+  retries (5 attempts) and per-row errors; with no SMTP host configured nothing is sent.
+- **OPS-04** Production refuses to start misconfigured: test endpoints on, a weak JWT secret,
+  bcrypt below 12, bug injection, rate limiting off, a non-https `WEB_BASE_URL`, or localhost
+  in `CORS_ORIGINS`. Migrations run once per release, not from a booting instance.
 - **NFR-SEC-04** The built web app is served with a strict Content-Security-Policy, nosniff,
   frame denial, referrer and permissions policies, COOP and CORP (reference list in
   `frontend/vite.config.ts`, applied by `vite preview`); API responses carry
@@ -325,6 +336,7 @@ Phase 2 adds `coupons`, `coupon_redemptions`, `reviews`, `wishlist_items`, `retu
 | Accessibility | @axe-core/playwright | WCAG 2.1 AA per page |
 | Performance | Locust | Catalog browsing and search, p95 budget (nightly) |
 | Security | OWASP ZAP (API + web, nightly), Bandit (ruff `S`), pip-audit, npm audit | |
+| Deployed smoke / uptime | Playwright against the live site | Read-only: health, headers, browse, cart (per deploy + every 30 min) |
 | Test effectiveness | Bug injection + `scripts/bug_hunt.py` | Every known bug must turn the suite red |
 | Reporting | JUnit XML, Playwright HTML, coverage (target 90% services) | |
 
@@ -340,3 +352,5 @@ Traceability: see [traceability.md](traceability.md).
 6. Admin **(done)** - test-only product/order shortcuts retired
 7. Test hardening - contract, perf, security, bug-injection mode **(done)**
 8. Phase 2 features **(done)** - coupons, reviews, wishlist, returns, order emails, low-stock alerts
+9. Deployment **(done)** - container, Fly.io + Vercel, background worker, outbox delivery,
+   shared rate-limit store, smoke tests and uptime monitoring against the live site (OPS-01..04)

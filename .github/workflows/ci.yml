@@ -64,6 +64,31 @@ jobs:
       - run: npm run test:coverage
       - run: npm run build
 
+  image:
+    name: API image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The Dockerfile is what production runs; a broken one should fail here, not at deploy.
+      - run: docker build -t homebasics-api:ci backend
+      - name: It boots and serves /health (degraded, with no database reachable)
+        run: |
+          {
+            echo "DATABASE_URL=postgresql+psycopg://nobody:nobody@127.0.0.1:5432/nothing"
+            echo "JWT_SECRET=ci-only-secret-not-used-in-production-000000"
+          } > ci.env
+          docker run -d --name api -p 8080:8080 --env-file ci.env homebasics-api:ci
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/v1/health || echo 000)
+            if [ "$code" = "503" ] || [ "$code" = "200" ]; then break; fi
+            sleep 1
+          done
+          body=$(curl -s localhost:8080/api/v1/health)
+          echo "$body"
+          echo "$body" | grep -q '"database":"unavailable"'
+          test "$(docker exec api id -u)" != "0"   # never root
+          docker logs api | tail -5
+
   bug-hunt:
     name: Bug hunt - every injected bug must turn the tests red
     needs: [backend]

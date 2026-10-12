@@ -1,0 +1,38 @@
+name: Uptime - smoke tests against production
+
+# Synthetic monitoring (OPS-02): the same read-only smoke suite the deploy runs, every half
+# hour. A failure means the live site is broken for shoppers right now, deploy or no deploy.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: e2e } }
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: echo "url=${{ vars.PROD_WEB_URL }}" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.url == ''
+        run: echo "::notice::PROD_WEB_URL variable not set - nothing to monitor yet"
+      - if: steps.check.outputs.url != ''
+        uses: actions/setup-node@v7
+        with: { node-version: '22' }
+      - if: steps.check.outputs.url != ''
+        run: npm ci
+      - if: steps.check.outputs.url != ''
+        run: npx playwright install --with-deps chromium
+      - name: Smoke
+        if: steps.check.outputs.url != ''
+        env:
+          BASE_URL: ${{ vars.PROD_WEB_URL }}
+        run: npm run test:deployed
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with: { name: uptime-failure, path: e2e/playwright-report, retention-days: 14 }

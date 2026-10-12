@@ -1,0 +1,39 @@
+# Fly.io config for the HomeBasics API. See docs/DEPLOYMENT.md for the one-time setup.
+# App name and region are the two things to change if you deploy your own copy.
+
+app = "homebasics-api"
+primary_region = "ord" # Chicago - closest Fly region to the Neon database (us-east-2)
+
+[build]
+dockerfile = "Dockerfile"
+
+[deploy]
+# Runs once per release, before any new machine takes traffic - so rolling machines can't
+# race on the schema. Seeding only fills an empty database (it prints and exits otherwise).
+release_command = "sh -c 'alembic upgrade head && python -m app.seed.run'"
+strategy = "rolling"
+
+[env]
+ENVIRONMENT = "prod"
+PORT = "8080"
+# The expiry sweep and outbox delivery need to run without a request (OPS-01).
+WORKER_ENABLED = "true"
+WORKER_INTERVAL_SECONDS = "60"
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = "suspend" # a demo that sleeps costs nothing and wakes in ~1 s
+auto_start_machines = true
+min_machines_running = 0
+
+[[http_service.checks]]
+grace_period = "20s"
+interval = "30s"
+method = "GET"
+path = "/api/v1/health"
+timeout = "5s"
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "512mb"
