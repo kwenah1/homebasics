@@ -1,0 +1,69 @@
+name: Visual baselines
+
+# Renders the visual-regression baselines on Linux and commits them to the current branch.
+# Run this deliberately (Actions -> Visual baselines -> Run workflow) when a UI change is
+# meant to change how a page looks; CI then compares against the new images.
+#
+# Baselines can't be produced locally: fonts and form controls render differently per
+# platform, so a Windows or macOS screenshot would never match the Ubuntu runner.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: '3.14'
+  NODE_VERSION: '22'
+  DATABASE_URL: postgresql+psycopg://homebasics:homebasics@localhost:5432/homebasics
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: homebasics, POSTGRES_PASSWORD: homebasics, POSTGRES_DB: homebasics }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U homebasics" --health-interval 5s --health-retries 10
+    env:
+      ENVIRONMENT: test
+      ENABLE_TEST_ENDPOINTS: 'true'
+      JWT_SECRET: ci-only-secret-not-used-in-production-000000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '${{ env.PYTHON_VERSION }}' }
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: Backend venv + migrate + seed
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/alembic upgrade head
+          .venv/bin/python -m app.seed.run
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - name: Render baselines
+        working-directory: e2e
+        run: npx playwright test --project=visual --update-snapshots
+      - name: Commit them
+        run: |
+          if [ -z "$(git status --porcelain e2e/tests/visual)" ]; then
+            echo "::notice::baselines unchanged - nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add e2e/tests/visual
+          git commit -m "chore(visual): update baselines from CI"
+          git push
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: { name: visual-report, path: e2e/playwright-report, retention-days: 7 }

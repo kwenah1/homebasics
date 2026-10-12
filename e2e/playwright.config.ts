@@ -43,13 +43,13 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: /(api|isolated|setup|deployed)\//,
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile',
-      testIgnore: /(api|isolated|setup|deployed)\//,
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
       grep: /@mobile/,
       dependencies: ['setup'],
       use: { ...devices['Pixel 7'] },
@@ -59,17 +59,25 @@ export default defineConfig({
     // rendering, form controls, storage and cookies - which is what @smoke covers.
     {
       name: 'firefox',
-      testIgnore: /(api|isolated|setup|deployed)\//,
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
       grep: /@smoke|@crossbrowser/,
       dependencies: ['setup'],
       use: { ...devices['Desktop Firefox'] },
     },
     {
       name: 'webkit',
-      testIgnore: /(api|isolated|setup|deployed)\//,
+      testIgnore: /(api|isolated|setup|deployed|visual)\//,
       grep: /@smoke|@crossbrowser/,
       dependencies: ['setup'],
       use: { ...devices['Desktop Safari'] },
+    },
+    {
+      // Visual regression (M10). Separate project so a pixel diff never blocks behavioural
+      // tests, and because the baselines are Linux-only - see tests/visual/pages.spec.ts.
+      name: 'visual',
+      testMatch: /visual\/.*\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
     {
       // Tests that change global state (server clock, full DB reset) must run alone: this
@@ -79,7 +87,7 @@ export default defineConfig({
       testMatch: /isolated\/.*\.spec\.ts/,
       fullyParallel: false,
       workers: 1,
-      dependencies: ['api', 'chromium', 'mobile', 'firefox', 'webkit'],
+      dependencies: ['api', 'chromium', 'mobile', 'firefox', 'webkit', 'visual'],
       use: { ...devices['Desktop Chrome'] },
     },
   ],
